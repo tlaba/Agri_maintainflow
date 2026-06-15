@@ -64,9 +64,27 @@
   function $(s, r) { return (r || document).querySelector(s); }
   function el(html) { var t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstElementChild; }
   var CROP = {
-    maize: { e: '🌽', c: 'crop-maize', label: 'Maize' }, soybean: { e: '🫛', c: 'crop-soy', label: 'Soybean' },
-    wheat: { e: '🌾', c: 'crop-wheat', label: 'Wheat' }, vegetables: { e: '🥬', c: 'crop-veg', label: 'Vegetables' },
-    other: { e: '🌱', c: 'crop-other', label: 'Other' }
+    maize:       { e: '🌽', c: 'crop-maize', label: 'Maize',        art: 'maize' },
+    sorghum:     { e: '🌾', c: 'crop-wheat', label: 'Sorghum',      art: 'grain' },
+    millet:      { e: '🌾', c: 'crop-wheat', label: 'Millet',       art: 'grain' },
+    wheat:       { e: '🌾', c: 'crop-wheat', label: 'Wheat',        art: 'grain' },
+    rice:        { e: '🌾', c: 'crop-veg',   label: 'Rice',         art: 'grain' },
+    soybean:     { e: '🫛', c: 'crop-soy',   label: 'Soybean',      art: 'legume' },
+    beans:       { e: '🫘', c: 'crop-soy',   label: 'Beans',        art: 'legume' },
+    groundnut:   { e: '🥜', c: 'crop-soy',   label: 'Groundnut',    art: 'legume' },
+    cowpea:      { e: '🫛', c: 'crop-soy',   label: 'Cowpea',       art: 'legume' },
+    sunflower:   { e: '🌻', c: 'crop-maize', label: 'Sunflower',    art: 'sunflower' },
+    cotton:      { e: '🌿', c: 'crop-other', label: 'Cotton',       art: 'cotton' },
+    tobacco:     { e: '🍂', c: 'crop-other', label: 'Tobacco',      art: 'leafy' },
+    cassava:     { e: '🍠', c: 'crop-other', label: 'Cassava',      art: 'bush' },
+    sweetpotato: { e: '🍠', c: 'crop-other', label: 'Sweet potato', art: 'bush' },
+    potato:      { e: '🥔', c: 'crop-other', label: 'Potato',       art: 'bush' },
+    tomato:      { e: '🍅', c: 'crop-veg',   label: 'Tomato',       art: 'leafy' },
+    cabbage:     { e: '🥬', c: 'crop-veg',   label: 'Cabbage',      art: 'leafy' },
+    onion:       { e: '🧅', c: 'crop-veg',   label: 'Onion',        art: 'leafy' },
+    pumpkin:     { e: '🎃', c: 'crop-maize', label: 'Pumpkin',      art: 'leafy' },
+    vegetables:  { e: '🥬', c: 'crop-veg',   label: 'Vegetables',   art: 'leafy' },
+    other:       { e: '🌱', c: 'crop-other', label: 'Other',        art: 'seedling' }
   };
   function cropOf(k) { return CROP[k] || CROP.other; }
   function fmtDate(isoStr) { if (!isoStr) return ''; var d = new Date(isoStr + 'T00:00'); return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }); }
@@ -177,32 +195,51 @@
         '<span class="wday">Today</span>' +
       '</div>');
   }
-  /* lightweight per-crop plant art (base anchored at 0,0, drawn upward) */
-  function cropPlant(key) {
-    switch (key) {
+  /* lightweight crop-family plant art (base anchored at 0,0, drawn upward) */
+  function cropPlant(art) {
+    switch (art) {
       case 'maize': return '<path d="M0 0 V-54" stroke="#2F7D33" stroke-width="3.5" fill="none"/>' +
         '<path d="M0 -16 C-16 -22 -24 -18 -28 -8 C-16 -12 -6 -14 0 -8Z" fill="#4E9E4F"/>' +
         '<path d="M0 -26 C16 -32 24 -28 28 -18 C16 -22 6 -24 0 -18Z" fill="#3F8F40"/>' +
         '<path d="M0 -36 C-14 -42 -20 -40 -24 -32 C-14 -34 -5 -36 0 -30Z" fill="#5CB85C"/>' +
         '<ellipse cx="4" cy="-44" rx="6.5" ry="13" fill="#F4C84B"/>' +
         '<path d="M4 -57 C-1 -52 -1 -46 4 -42" stroke="#A5D26A" stroke-width="2.5" fill="none"/>';
-      case 'wheat': return '<path d="M0 0 V-48" stroke="#CDA12C" stroke-width="2.5"/>' +
+      case 'grain': return '<path d="M0 0 V-48" stroke="#CDA12C" stroke-width="2.5"/>' +
         '<path d="M0 -52 V-62" stroke="#CDA12C" stroke-width="1.4"/>' +
         '<g fill="#E3B12C"><ellipse cx="0" cy="-50" rx="3.6" ry="6"/>' +
         '<ellipse cx="-6" cy="-44" rx="3.2" ry="5.6"/><ellipse cx="6" cy="-44" rx="3.2" ry="5.6"/>' +
         '<ellipse cx="-6" cy="-36" rx="3.2" ry="5.6"/><ellipse cx="6" cy="-36" rx="3.2" ry="5.6"/>' +
         '<ellipse cx="-5" cy="-28" rx="3" ry="5.2"/><ellipse cx="5" cy="-28" rx="3" ry="5.2"/></g>';
-      case 'soybean': return '<path d="M0 0 V-32" stroke="#3F8F40" stroke-width="2.5"/>' +
+      case 'legume': return '<path d="M0 0 V-32" stroke="#3F8F40" stroke-width="2.5"/>' +
         '<ellipse cx="-13" cy="-28" rx="9" ry="6" fill="#4E9E4F" transform="rotate(-22 -13 -28)"/>' +
         '<ellipse cx="13" cy="-28" rx="9" ry="6" fill="#4E9E4F" transform="rotate(22 13 -28)"/>' +
         '<ellipse cx="0" cy="-38" rx="9" ry="6.5" fill="#5CB85C"/>' +
         '<g fill="#9CCC65" stroke="#558B2F" stroke-width=".8">' +
         '<path d="M-5 -8 q-7 5 -3 13 q6 1 5 -7Z"/><path d="M6 -12 q7 4 4 13 q-6 2 -6 -6Z"/></g>';
-      case 'vegetables': return '<path d="M-16 -2 a16 12 0 0 1 32 0Z" fill="#3F8F40"/>' +
+      case 'leafy': return '<path d="M-16 -2 a16 12 0 0 1 32 0Z" fill="#3F8F40"/>' +
         '<circle cx="0" cy="-12" r="14" fill="#56B65A"/>' +
         '<path d="M-12 -16 q-6 -8 -2 -16 q8 4 6 14Z" fill="#4E9E4F"/>' +
         '<path d="M0 -26 q-8 7 -3 16 q8 -3 4 -14Z" fill="#6FCF6F"/>' +
         '<circle cx="13" cy="-3" r="5" fill="#E2533B"/>';
+      case 'sunflower':
+        var pet = '';
+        for (var a = 0; a < 12; a++) {
+          var r = a * Math.PI / 6, px = (Math.cos(r) * 12).toFixed(1), py = (-46 + Math.sin(r) * 12).toFixed(1);
+          pet += '<ellipse cx="' + px + '" cy="' + py + '" rx="3" ry="6.5" fill="#F6C026" transform="rotate(' + (a * 30) + ' ' + px + ' ' + py + ')"/>';
+        }
+        return '<path d="M0 0 V-40" stroke="#3F8F40" stroke-width="3"/>' +
+          '<path d="M0 -20 C-14 -22 -20 -16 -22 -8 C-12 -10 -4 -14 0 -12Z" fill="#4E9E4F"/>' +
+          pet + '<circle cx="0" cy="-46" r="8" fill="#7A4B22"/>';
+      case 'cotton': return '<path d="M0 0 V-30" stroke="#4E7D3A" stroke-width="2.5"/>' +
+        '<path d="M0 -12 C-12 -14 -18 -22 -18 -30 C-8 -26 -2 -20 0 -12Z" fill="#4E9E4F"/>' +
+        '<path d="M0 -16 C12 -18 18 -26 18 -34 C8 -30 2 -24 0 -16Z" fill="#3F8F40"/>' +
+        '<g fill="#FAFAF5" stroke="#E0E0D6" stroke-width=".6"><circle cx="0" cy="-34" r="6"/>' +
+        '<circle cx="-11" cy="-24" r="5"/><circle cx="11" cy="-26" r="5"/></g>';
+      case 'bush': return '<path d="M0 0 V-26" stroke="#3F8F40" stroke-width="2.5"/>' +
+        '<ellipse cx="-12" cy="-22" rx="9" ry="7" fill="#5CB85C"/>' +
+        '<ellipse cx="12" cy="-22" rx="9" ry="7" fill="#3F8F40"/>' +
+        '<ellipse cx="0" cy="-30" rx="11" ry="9" fill="#4E9E4F"/>' +
+        '<ellipse cx="0" cy="-18" rx="10" ry="7" fill="#56B65A"/>';
       default: return '<path d="M0 0 V-20" stroke="#3F8F40" stroke-width="2.5"/>' +
         '<path d="M0 -16 C-12 -20 -18 -28 -18 -36 C-8 -32 -2 -26 0 -16Z" fill="#5CB85C"/>' +
         '<path d="M0 -18 C12 -22 18 -30 18 -38 C8 -34 2 -28 0 -18Z" fill="#4E9E4F"/>';
@@ -219,7 +256,7 @@
           '<defs>' +
             '<linearGradient id="fhSky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#bfe3f5"/><stop offset="1" stop-color="#eaf6ee"/></linearGradient>' +
             '<linearGradient id="fhField" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5BA45C"/><stop offset="1" stop-color="#2E7D32"/></linearGradient>' +
-            '<g id="fhPlant">' + cropPlant(fld.crop) + '</g>' +
+            '<g id="fhPlant">' + cropPlant(c.art || 'seedling') + '</g>' +
           '</defs>' +
           '<rect width="400" height="150" fill="url(#fhSky)"/>' +
           '<circle cx="332" cy="40" r="34" fill="#fff6d6" opacity=".7"/>' +

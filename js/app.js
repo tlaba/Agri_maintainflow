@@ -139,6 +139,8 @@
         '<div class="kpi"><div class="v">' + tasksDueCount() + '</div><div class="l">Tasks due</div></div>' +
         '<div class="kpi"><div class="v sm">' + money(totalSpend()) + '</div><div class="l">Spend</div></div>' +
       '</div>'));
+    // weather forecast (sample — works offline)
+    v.appendChild(weatherCard());
     v.appendChild(el('<div class="sec-h"><h3>Your fields</h3><span class="link" id="addField2">+ Add field</span></div>'));
     $('#addField2', v).addEventListener('click', openFieldForm);
 
@@ -166,6 +168,35 @@
       });
     }
     setFab('+ Field', openFieldForm);
+  }
+  function weatherCard() {
+    return el(
+      '<div class="weather">' +
+        '<span class="wic"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#15A0A2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 13a4 4 0 0 0-3.5-3.97 5 5 0 0 0-9.69 1.32A3.5 3.5 0 0 0 4 17h11a3 3 0 0 0 1-3.84Z"/><path d="M8 19v1.5"/><path d="M12 19.5V21"/><path d="M16 19v1.5"/></svg></span>' +
+        '<div class="wmeta"><div class="wlbl">Weather forecast</div><div class="wtemp">22°C</div><div class="wcond">Light rain · gentle breeze</div></div>' +
+        '<span class="wday">Today</span>' +
+      '</div>');
+  }
+  function fieldHeroSVG(fld, c) {
+    return el(
+      '<div class="field-hero">' +
+        '<svg viewBox="0 0 400 150" preserveAspectRatio="xMidYMid slice">' +
+          '<defs>' +
+            '<linearGradient id="fhSky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#bfe3f5"/><stop offset="1" stop-color="#eaf6ee"/></linearGradient>' +
+            '<linearGradient id="fhField" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5BA45C"/><stop offset="1" stop-color="#2E7D32"/></linearGradient>' +
+          '</defs>' +
+          '<rect width="400" height="150" fill="url(#fhSky)"/>' +
+          '<circle cx="332" cy="40" r="34" fill="#fff6d6" opacity=".7"/>' +
+          '<circle cx="332" cy="40" r="20" fill="#FBDD7A"/>' +
+          '<path d="M0 98 Q100 80 200 94 T400 88 V150 H0 Z" fill="#A7D49B"/>' +
+          '<path d="M0 112 Q120 98 240 112 T400 106 V150 H0 Z" fill="#74B665"/>' +
+          '<path d="M0 128 Q140 118 280 128 T400 124 V150 H0 Z" fill="url(#fhField)"/>' +
+          '<g stroke="#ffffff" stroke-opacity=".16" stroke-width="2" fill="none">' +
+            '<path d="M0 138 Q200 129 400 135"/><path d="M0 146 Q200 137 400 143"/>' +
+          '</g>' +
+        '</svg>' +
+        '<div class="fh-cap"><span class="fh-emoji">' + c.e + '</span><span>' + c.label + ' · ' + esc(fld.variety) + '</span></div>' +
+      '</div>');
   }
   function nextTaskFor(fid) {
     var open = DB.tasks.filter(function (t) { return t.fieldId === fid && !t.completed; });
@@ -199,6 +230,7 @@
     wireSyncPill(); updateSyncPill();
 
     var v = $('#view'); v.innerHTML = '';
+    v.appendChild(fieldHeroSVG(fld, c));
     var days = daysBetween(fld.plantedISO) * -1; if (days < 0) days = 0;
     v.appendChild(el(
       '<div class="mini-kpis"><div><div class="v">' + days + '</div><div class="l">Days in</div></div>' +

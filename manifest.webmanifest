@@ -9,7 +9,7 @@
   "display_override": ["standalone", "minimal-ui"],
   "orientation": "portrait",
   "background_color": "#0F2A3F",
-  "theme_color": "#0F2A3F",
+  "theme_color": "#2E7D32",
   "lang": "en",
   "dir": "ltr",
   "categories": ["productivity", "business", "utilities"],

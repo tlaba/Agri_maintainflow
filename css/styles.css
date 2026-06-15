@@ -1,5 +1,6 @@
 :root{
   --navy:#0F2A3F; --navy-2:#163b56; --teal:#15A0A2; --teal-deep:#0E7E80;
+  --green:#2E7D32; --green-deep:#1B5E20; --green-soft:#E8F3E9;
   --gold:#E8A93C; --gold-ink:#b07d18; --clay:#C4543A; --leaf:#3E8E5A;
   --sand:#F4F0E8; --paper:#fff; --ink:#13202b; --muted:#5e7080; --hair:#e7e3d8;
   --safe-top:env(safe-area-inset-top,0px);
@@ -16,7 +17,7 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;color:inhe
 .app{max-width:520px;margin:0 auto;min-height:100%;display:flex;flex-direction:column;background:var(--sand);position:relative}
 
 /* ---------- top bar ---------- */
-.topbar{background:var(--navy);color:#fff;padding:calc(14px + var(--safe-top)) 18px 16px;position:sticky;top:0;z-index:20}
+.topbar{background:linear-gradient(160deg,var(--green),var(--green-deep));color:#fff;padding:calc(14px + var(--safe-top)) 18px 16px;position:sticky;top:0;z-index:20}
 .brandrow{display:flex;align-items:center;justify-content:space-between}
 .wordmark{display:flex;align-items:center;gap:8px;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:16px}
 .logo-tile{width:26px;height:26px;border-radius:7px;background:linear-gradient(135deg,var(--teal),var(--teal-deep));display:grid;place-items:center}
@@ -24,14 +25,14 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;color:inhe
 .offline{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);border-radius:999px;padding:5px 11px;font-size:11px;font-weight:600;color:#bfe9e8}
 .offline .dot{width:7px;height:7px;border-radius:50%;background:var(--leaf);transition:background .3s}
 .offline.is-offline .dot{background:var(--gold)}
-.tb-greet{margin-top:14px;font-size:13px;color:#9bb6c4;font-weight:500}
+.tb-greet{margin-top:14px;font-size:13px;color:#cfe8d0;font-weight:500}
 .tb-greet b{display:block;font-family:'Space Grotesk',sans-serif;font-size:22px;color:#fff;font-weight:600;margin-top:2px}
 .tb-back{display:flex;align-items:center;gap:12px;color:#fff}
 .tb-back .bk{width:34px;height:34px;border-radius:10px;background:rgba(255,255,255,.1);display:grid;place-items:center}
 .tb-title{margin-top:14px}
 .tb-title .t{font-family:'Space Grotesk',sans-serif;font-size:22px;font-weight:600;color:#fff;display:flex;align-items:center;gap:9px}
-.tb-title .tg{font-size:11px;background:rgba(21,160,162,.28);color:#9fe3e2;padding:3px 8px;border-radius:7px;font-weight:700;letter-spacing:.06em}
-.tb-title .row{font-size:12.5px;color:#9bb6c4;margin-top:7px}
+.tb-title .tg{font-size:11px;background:rgba(255,255,255,.18);color:#eafaea;padding:3px 8px;border-radius:7px;font-weight:700;letter-spacing:.06em}
+.tb-title .row{font-size:12.5px;color:#cfe8d0;margin-top:7px}
 
 /* ---------- view ---------- */
 .view{flex:1;padding:16px 16px calc(96px + var(--safe-bot));overflow-y:auto}
@@ -39,6 +40,21 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;color:inhe
 .alert .ic{width:32px;height:32px;border-radius:9px;background:rgba(196,84,58,.12);display:grid;place-items:center;flex:0 0 32px}
 .alert b{font-size:13.5px;font-family:'Space Grotesk',sans-serif}
 .alert p{font-size:12px;color:var(--muted);margin-top:1px}
+
+/* weather forecast card (home) */
+.weather{display:flex;align-items:center;gap:13px;background:linear-gradient(135deg,#eaf4ff,#f3faf4);border:1px solid var(--hair);border-radius:14px;padding:13px 14px;margin-bottom:16px}
+.weather .wic{width:42px;height:42px;border-radius:12px;background:#fff;display:grid;place-items:center;flex:0 0 42px;box-shadow:0 4px 10px -6px rgba(15,42,63,.35)}
+.weather .wmeta{flex:1;min-width:0}
+.weather .wlbl{font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+.weather .wtemp{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:20px;color:var(--navy);line-height:1.1;margin-top:2px}
+.weather .wcond{font-size:12px;color:var(--muted);margin-top:1px}
+.weather .wday{font-size:11px;font-weight:700;color:var(--green-deep);background:var(--green-soft);padding:4px 10px;border-radius:999px;white-space:nowrap}
+
+/* field hero banner (field detail) */
+.field-hero{position:relative;height:140px;border-radius:16px;overflow:hidden;margin-bottom:16px;box-shadow:0 10px 22px -14px rgba(15,42,63,.6)}
+.field-hero svg{display:block;width:100%;height:100%}
+.field-hero .fh-cap{position:absolute;left:12px;bottom:11px;display:flex;align-items:center;gap:7px;background:rgba(15,42,63,.42);color:#fff;padding:5px 11px 5px 8px;border-radius:999px;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:12px;-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px)}
+.field-hero .fh-cap .fh-emoji{font-size:15px;line-height:1}
 
 .kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-bottom:20px}
 .kpi{background:#fff;border:1px solid var(--hair);border-radius:13px;padding:12px 10px}
@@ -145,13 +161,13 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;color:inhe
 .empty p{font-size:13px;line-height:1.5;max-width:260px;margin:0 auto}
 
 /* fab */
-.fab{position:fixed;right:max(18px,calc(50% - 260px + 18px));bottom:calc(80px + var(--safe-bot));background:var(--teal);color:#fff;border-radius:16px;padding:14px 18px;font-weight:600;font-size:13.5px;font-family:'Space Grotesk',sans-serif;display:flex;align-items:center;gap:7px;box-shadow:0 12px 24px -8px rgba(14,126,128,.7);z-index:15}
+.fab{position:fixed;right:max(18px,calc(50% - 260px + 18px));bottom:calc(80px + var(--safe-bot));background:var(--green);color:#fff;border-radius:16px;padding:14px 18px;font-weight:600;font-size:13.5px;font-family:'Space Grotesk',sans-serif;display:flex;align-items:center;gap:7px;box-shadow:0 12px 24px -8px rgba(27,94,32,.6);z-index:15}
 .fab:active{transform:scale(.97)}
 
 /* bottom nav */
 .nav{position:fixed;left:50%;transform:translateX(-50%);bottom:0;width:100%;max-width:520px;height:calc(64px + var(--safe-bot));padding-bottom:var(--safe-bot);background:#fff;border-top:1px solid var(--hair);display:flex;align-items:center;justify-content:space-around;z-index:18}
 .nav-item{display:flex;flex-direction:column;align-items:center;gap:3px;color:#9aa9b3;font-size:10px;font-weight:600;flex:1;height:100%;justify-content:center}
-.nav-item.on{color:var(--teal-deep)}
+.nav-item.on{color:var(--green)}
 .nav-item.on .ni{background:rgba(21,160,162,.12)}
 .ni{width:48px;height:28px;border-radius:999px;display:grid;place-items:center}
 .ni svg{width:21px;height:21px}
@@ -195,12 +211,12 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;color:inhe
 .field-group{margin-bottom:15px}
 .field-group label{display:block;font-size:12px;font-weight:600;color:var(--navy);margin-bottom:7px}
 .field-group input,.field-group select,.field-group textarea{width:100%;border:1px solid var(--hair);border-radius:12px;padding:13px 14px;font-size:15px;font-family:inherit;background:var(--sand);color:var(--ink)}
-.field-group input:focus,.field-group select:focus,.field-group textarea:focus{outline:none;border-color:var(--teal);background:#fff}
+.field-group input:focus,.field-group select:focus,.field-group textarea:focus{outline:none;border-color:var(--green);background:#fff}
 .row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .seg{display:flex;gap:7px;flex-wrap:wrap}
 .seg button{flex:1;min-width:72px;border:1px solid var(--hair);background:var(--sand);border-radius:11px;padding:11px 6px;font-size:12px;font-weight:600;color:var(--muted)}
 .seg button.on{background:var(--navy);color:#fff;border-color:var(--navy)}
-.btn-primary{width:100%;background:var(--teal);color:#fff;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:15px;padding:15px;border-radius:13px;margin-top:6px}
+.btn-primary{width:100%;background:var(--green);color:#fff;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:15px;padding:15px;border-radius:13px;margin-top:6px}
 .btn-primary:active{transform:scale(.99)}
 .btn-danger{width:100%;background:#fff;color:var(--clay);border:1px solid rgba(196,84,58,.3);font-weight:600;font-size:13px;padding:12px;border-radius:12px;margin-top:10px}
 

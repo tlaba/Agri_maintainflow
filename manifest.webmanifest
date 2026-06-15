@@ -1,0 +1,25 @@
+{
+  "name": "MaintainFlow Ag",
+  "short_name": "MF Ag",
+  "description": "CMMS for farms — fields, work orders, expenses and market prices. Works offline.",
+  "id": "/",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "portrait",
+  "background_color": "#0F2A3F",
+  "theme_color": "#0F2A3F",
+  "lang": "en",
+  "dir": "ltr",
+  "categories": ["productivity", "business", "utilities"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Tasks due", "short_name": "Tasks", "url": "/?view=tasks", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Add expense", "short_name": "Expense", "url": "/?view=money", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] }
+  ]
+}

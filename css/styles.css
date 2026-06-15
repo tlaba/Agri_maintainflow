@@ -220,6 +220,31 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;color:inhe
 .btn-primary:active{transform:scale(.99)}
 .btn-danger{width:100%;background:#fff;color:var(--clay);border:1px solid rgba(196,84,58,.3);font-weight:600;font-size:13px;padding:12px;border-radius:12px;margin-top:10px}
 
+/* account sheet row */
+.acct-row{display:flex;align-items:center;gap:12px;background:var(--green-soft);border-radius:13px;padding:13px;margin-bottom:4px}
+.acct-row .acct-ic{width:42px;height:42px;border-radius:12px;flex:0 0 42px;display:grid;place-items:center;background:linear-gradient(135deg,var(--green),var(--green-deep))}
+.acct-row .acct-meta b{font-family:'Space Grotesk',sans-serif;font-size:14px;display:block;word-break:break-all}
+.acct-row .acct-meta span{font-size:12px;color:var(--muted);display:block;margin-top:2px}
+
+/* auth gate (login / signup) */
+.auth-gate{position:fixed;inset:0;z-index:100;background:linear-gradient(160deg,var(--green),var(--green-deep));overflow-y:auto;display:flex;flex-direction:column}
+.auth-gate .ag-wrap{width:100%;max-width:420px;margin:auto;padding:calc(28px + var(--safe-top)) 20px calc(28px + var(--safe-bot))}
+.auth-gate .ag-brand{display:flex;align-items:center;gap:9px;justify-content:center;color:#fff;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:19px;margin-bottom:20px}
+.auth-gate .ag-logo{width:34px;height:34px;border-radius:9px;background:rgba(255,255,255,.16);display:grid;place-items:center}
+.auth-gate .ag-tag{font-size:11px;color:#eafaea;font-weight:700;letter-spacing:.14em}
+.auth-gate .ag-card{background:#fff;border-radius:18px;padding:22px 20px;box-shadow:0 20px 50px -18px rgba(0,0,0,.5)}
+.auth-gate h2{font-family:'Space Grotesk',sans-serif;font-size:20px;color:var(--navy)}
+.auth-gate .ag-sub{font-size:13px;color:var(--muted);margin:6px 0 16px;line-height:1.45}
+.auth-gate label{display:block;font-size:12px;font-weight:600;color:var(--navy);margin:12px 0 5px}
+.auth-gate input{width:100%;border:1px solid var(--hair);background:var(--sand);border-radius:11px;padding:13px 12px;font-size:15px;color:var(--ink)}
+.auth-gate input:focus{outline:none;border-color:var(--green);background:#fff}
+.auth-gate .ag-msg{margin-top:12px;font-size:12.5px;font-weight:500;color:var(--clay);background:rgba(196,84,58,.1);border-radius:9px;padding:9px 11px;line-height:1.4}
+.auth-gate .ag-btn{width:100%;margin-top:16px;background:var(--green);color:#fff;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:15px;padding:14px;border-radius:12px}
+.auth-gate .ag-btn:disabled{opacity:.6}
+.auth-gate .ag-alt{text-align:center;font-size:13px;color:var(--muted);margin-top:13px}
+.auth-gate .ag-link{color:var(--green-deep);font-weight:700;font-size:13px}
+.auth-gate .ag-foot{text-align:center;color:#dff0e0;font-size:12px;margin-top:18px}
+
 /* toast */
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(86px + var(--safe-bot));background:var(--navy);color:#fff;font-size:13px;font-weight:500;padding:12px 18px;border-radius:12px;z-index:80;box-shadow:0 12px 28px -10px rgba(0,0,0,.5);animation:toastIn .3s both}
 @keyframes toastIn{from{opacity:0;transform:translate(-50%,12px)}to{opacity:1;transform:translate(-50%,0)}}

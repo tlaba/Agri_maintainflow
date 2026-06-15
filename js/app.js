@@ -449,6 +449,7 @@
     else if (state.view === 'tasks') viewAllTasks();
     else if (state.view === 'money') viewMoney();
     else if (state.view === 'pests') viewPests();
+    syncInstallBanner();
   }
   // global "Tasks" tab = all open work orders across fields
   function viewAllTasks() {
@@ -510,6 +511,12 @@
     b.hidden = false;
   }
   function hideInstallUI() { $('#installBanner').hidden = true; }
+  /* The home dashboard renders its own install card; suppress the duplicate
+     fixed banner whenever that card is on screen, show it on other views. */
+  function syncInstallBanner() {
+    if ($('#cardInstall')) { hideInstallUI(); return; }
+    showBanner();
+  }
 
   function triggerInstall() {
     if (deferredPrompt) {
@@ -526,7 +533,7 @@
   }
 
   window.addEventListener('beforeinstallprompt', function (e) {
-    e.preventDefault(); deferredPrompt = e; showBanner(); render();
+    e.preventDefault(); deferredPrompt = e; render();
   });
   window.addEventListener('appinstalled', function () {
     deferredPrompt = null; hideInstallUI(); toast('Added to home screen 🎉'); render();
@@ -538,7 +545,7 @@
   $('#iosSheet').addEventListener('click', function (e) { if (e.target.id === 'iosSheet') e.currentTarget.hidden = true; });
 
   /* show iOS banner on load (no beforeinstallprompt fires on iOS) */
-  if (isIOS() && !isStandalone() && !DB.dismissInstall) { setTimeout(showBanner, 1200); }
+  if (isIOS() && !isStandalone() && !DB.dismissInstall) { setTimeout(syncInstallBanner, 1200); }
 
   /* deep link from manifest shortcuts */
   (function () {

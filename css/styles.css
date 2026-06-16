@@ -305,6 +305,32 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;color:inhe
 .acct-links-block{border-top:0;margin-top:4px;padding-top:0}
 .acct-link{color:var(--green-deep);font-weight:600;font-size:13px;padding:4px 0}
 
+/* yield analytics */
+.an-card{background:#fff;border:1px solid var(--hair);border-radius:15px;padding:14px;margin-bottom:13px}
+.an-head{display:flex;align-items:center;gap:11px;margin-bottom:12px}
+.an-head .an-ic{width:38px;height:38px;border-radius:10px;flex:0 0 38px;display:grid;place-items:center;font-size:19px;background:var(--green-soft)}
+.an-head .an-meta b{font-family:'Space Grotesk',sans-serif;font-size:14px;display:block}
+.an-head .an-meta span{font-size:11.5px;color:var(--muted)}
+.an-chart{position:relative;display:flex;align-items:flex-end;gap:10px;height:120px;padding:14px 4px 0;border-bottom:1px solid var(--hair)}
+.an-chart .bench-line{position:absolute;left:0;right:0;border-top:1.5px dashed var(--gold-ink);opacity:.6}
+.abar{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;position:relative}
+.abar .abar-fill{width:60%;max-width:34px;background:linear-gradient(180deg,var(--green),var(--green-deep));border-radius:6px 6px 0 0;min-height:4px}
+.abar .abar-v{font-size:10px;font-weight:700;color:var(--navy);margin-bottom:3px}
+.abar .abar-y{position:absolute;bottom:-19px;font-size:10px;color:var(--muted)}
+.an-foot{font-size:10.5px;color:var(--muted);margin-top:24px}
+
+/* lender / credit summary */
+.score-card{display:flex;align-items:center;gap:16px;background:#fff;border:1px solid var(--hair);border-radius:16px;padding:16px;margin-bottom:14px}
+.score-ring{width:84px;height:84px;border-radius:50%;flex:0 0 84px;display:grid;place-items:center}
+.score-ring .score-num{width:64px;height:64px;border-radius:50%;background:#fff;display:grid;place-items:center;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:24px;color:var(--green-deep)}
+.score-meta b{font-family:'Space Grotesk',sans-serif;font-size:18px;color:var(--navy);display:block}
+.score-meta span{font-size:12px;color:var(--muted)}
+.factor{margin-bottom:13px}
+.factor-top{display:flex;justify-content:space-between;font-size:12.5px;font-weight:600;color:var(--navy)}
+.factor-bar{height:8px;background:var(--hair);border-radius:999px;margin:6px 0 4px;overflow:hidden}
+.factor-bar i{display:block;height:100%;background:linear-gradient(90deg,var(--green),var(--green-deep));border-radius:999px}
+.factor-sub{font-size:11px;color:var(--muted)}
+
 /* toast */
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(86px + var(--safe-bot));background:var(--navy);color:#fff;font-size:13px;font-weight:500;padding:12px 18px;border-radius:12px;z-index:80;box-shadow:0 12px 28px -10px rgba(0,0,0,.5);animation:toastIn .3s both}
 @keyframes toastIn{from{opacity:0;transform:translate(-50%,12px)}to{opacity:1;transform:translate(-50%,0)}}

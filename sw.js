@@ -1,11 +1,12 @@
 /* MaintainFlow Ag — service worker (offline-first) */
-var VERSION = 'mfag-v1.1.1';
+var VERSION = 'mfag-v1.1.2';
 var CORE = [
   './',
   './index.html',
   './css/styles.css',
   './js/app.js',
   './js/firebase-config.js',
+  './suppliers.json',
   './manifest.webmanifest',
   './icons/icon-192.png',
   './icons/icon-512.png',

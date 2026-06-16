@@ -99,6 +99,17 @@
 <!-- auth gate (shown only when cloud login is configured) -->
 <div class="auth-gate" id="authGate" hidden></div>
 
+<!-- Netlify Forms detection stub: the live contact form is rendered by JS and
+     submitted via fetch, so this hidden static form lets Netlify's deploy bot
+     register the "contact" form and its fields. Do not remove. -->
+<form name="contact" netlify netlify-honeypot="bot-field" hidden>
+  <input type="text" name="bot-field" />
+  <input type="text" name="topic" />
+  <input type="email" name="email" />
+  <textarea name="message"></textarea>
+  <input type="text" name="context" />
+</form>
+
 <!-- Cloud config (tiny). The Firebase SDK itself is loaded lazily by app.js
      only when this file has real keys — so local mode stays zero-weight. -->
 <script src="js/firebase-config.js"></script>

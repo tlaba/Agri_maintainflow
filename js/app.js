@@ -28,6 +28,9 @@
   function addDays(n) { var d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); }
   function iso(y, m, d) { return new Date(y, m - 1, d).toISOString().slice(0, 10); }
   var YR = today().getFullYear();
+  var APP_VERSION = '1.1.9';
+  var CONTACT_EMAIL = 'info@maintainflow.pro';
+  var CONTACT_TOPICS = ['Bug report', 'Feature request', 'Billing & Pro', 'Account & login', 'Partnership / sales', 'Something else'];
 
   function seed() {
     return {
@@ -940,6 +943,32 @@
     var host = openModal('<div class="modal-head"><h3>Privacy</h3><button class="x" id="mx">&times;</button></div><div class="legal">' + privacyHtml() + '</div><button class="btn-soft" id="pClose">Close</button>');
     $('#mx', host).onclick = closeModal; $('#pClose', host).onclick = closeModal;
   }
+  function copyText(t) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(t).then(function () { toast('Copied ' + t); }).catch(function () { toast(t); });
+    } else { toast(t); }
+  }
+  function openContactSheet(presetTopic) {
+    var host = openModal(
+      '<div class="modal-head"><h3>Contact us</h3><button class="x" id="mx">&times;</button></div>' +
+      '<p class="sheet-note">Pick a topic and write your message — we usually reply within 1–2 working days. Tapping send opens your email app.</p>' +
+      '<div class="field-group"><label>What’s this about?</label><select id="cTopic">' + CONTACT_TOPICS.map(function (t) { return '<option' + (t === presetTopic ? ' selected' : '') + '>' + t + '</option>'; }).join('') + '</select></div>' +
+      '<div class="field-group"><label>Message</label><textarea id="cMsg" rows="5" placeholder="Tell us what’s happening…"></textarea></div>' +
+      '<button class="btn-primary" id="cSend">Send email</button>' +
+      '<div class="contact-alt">or email <a href="mailto:' + CONTACT_EMAIL + '">' + CONTACT_EMAIL + '</a> <button class="link-btn" id="cCopy">Copy</button></div>');
+    $('#mx', host).onclick = closeModal;
+    $('#cCopy', host).onclick = function () { copyText(CONTACT_EMAIL); };
+    $('#cSend', host).onclick = function () {
+      var topic = $('#cTopic', host).value;
+      var msg = $('#cMsg', host).value.trim();
+      if (!msg) { toast('Add a short message first'); return; }
+      var subject = '[' + topic + '] MaintainFlow Ag';
+      var body = msg + '\n\n—\nSent from MaintainFlow Ag · v' + APP_VERSION + ' · ' + countryInfo().name + ' · ' + (isPro() ? 'Pro' : 'Free');
+      window.location.href = 'mailto:' + CONTACT_EMAIL + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
+      closeModal();
+      toast('Opening your email app…');
+    };
+  }
   function showConsent() {
     var host = openModal('<div class="modal-head"><h3>Welcome to MaintainFlow Ag</h3></div><p class="modal-note">A quick note on your data before you start:</p><div class="legal">' + privacyHtml() + '</div><button class="btn-primary" id="cAgree">Agree &amp; continue</button>');
     $('#modalHost').onclick = null; // must choose Agree
@@ -1171,11 +1200,16 @@
     v.appendChild(row('🐛', 'Pest & disease library', '', function () { go('pests'); }));
     v.appendChild(row('🛒', 'Input suppliers', '', function () { go('suppliers'); }));
 
+    // Support
+    sec('Support');
+    v.appendChild(row('✉️', 'Contact us', '', function () { openContactSheet(); }));
+
     // Settings
     sec('Settings');
     v.appendChild(row('🌍', 'Region & currency', countryInfo().name, openRegionSheet));
     v.appendChild(row('⭐', 'Plan', isPro() ? 'Pro' : 'Free', openUpgradeSheet));
     v.appendChild(row('🔒', 'Privacy', '', openPrivacy));
+    v.appendChild(row('ℹ️', 'Version', 'v' + APP_VERSION, function () { openContactSheet(); }));
 
     if (cloud.on) {
       var out = el('<button class="btn-soft" id="moreOut" style="margin-top:16px">Sign out</button>');

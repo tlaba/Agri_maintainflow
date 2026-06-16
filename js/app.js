@@ -6,17 +6,21 @@
   'use strict';
 
   /* ---------------- storage ---------------- */
-  var KEY = 'mfag.v1';
-  var mem = null; // in-memory fallback
+  var BASE_KEY = 'mfag.v1';                 // local (no-login) data
+  var mem = null;                           // in-memory fallback
+  /* cloud sync state (inactive until Firebase is configured + signed in) */
+  var cloud = { enabled: false, on: false, uid: null, email: null, applying: false, saveTimer: null, db: null, auth: null, unsub: null };
   function canStore() { try { localStorage.setItem('_t', '1'); localStorage.removeItem('_t'); return true; } catch (e) { return false; } }
   var STORE_OK = canStore();
+  function storeKey() { return cloud.uid ? 'mfag.u.' + cloud.uid : BASE_KEY; }
   function load() {
     if (!STORE_OK) return mem;
-    try { var r = localStorage.getItem(KEY); return r ? JSON.parse(r) : null; } catch (e) { return null; }
+    try { var r = localStorage.getItem(storeKey()); return r ? JSON.parse(r) : null; } catch (e) { return null; }
   }
   function save() {
-    if (!STORE_OK) { mem = DB; return; }
-    try { localStorage.setItem(KEY, JSON.stringify(DB)); } catch (e) {}
+    if (!STORE_OK) { mem = DB; }
+    else { try { localStorage.setItem(storeKey(), JSON.stringify(DB)); } catch (e) {} }
+    if (cloud.on && !cloud.applying) scheduleCloudSave();
   }
 
   /* ---------------- seed ---------------- */
@@ -113,9 +117,12 @@
   var CATCOLOR = { Fertilizer: '#3E8E5A', Seed: '#E8A93C', Fuel: '#15A0A2', Labour: '#C4543A', Chemicals: '#6f6fb0', Other: '#5e7080' };
 
   /* ---------------- state ---------------- */
-  var DB = load();
-  if (!DB) { DB = seed(); seedTasks(); save(); }
-  if (!DB.tasks || !DB.tasks.length) { /* keep */ }
+  var DB = null; // initialized in boot (local mode) or after sign-in (cloud mode)
+  function initLocalDB() {
+    DB = load();
+    if (!DB) { DB = seed(); seedTasks(); save(); }
+    if (!DB.tasks || !DB.tasks.length) { /* keep */ }
+  }
 
   var state = { view: 'fields', fieldId: null, taskFilter: 'All' };
 
@@ -584,7 +591,13 @@
   });
 
   /* ---------------- sync pill / online state ---------------- */
-  function wireSyncPill() { var p = $('#syncPill'); if (p) p.onclick = function () { toast(navigator.onLine ? 'All changes saved on this device' : 'Offline — changes saved locally, will be safe'); }; }
+  function wireSyncPill() {
+    var p = $('#syncPill'); if (!p) return;
+    p.onclick = function () {
+      if (cloud.on) return openAccountSheet();
+      toast(navigator.onLine ? 'All changes saved on this device' : 'Offline — changes saved locally, will be safe');
+    };
+  }
   function updateSyncPill() {
     var p = $('#syncPill'), t = $('#syncText'); if (!p || !t) return;
     if (navigator.onLine) { p.classList.remove('is-offline'); t.textContent = 'Synced'; }
@@ -647,15 +660,6 @@
   $('#iosClose').addEventListener('click', function () { $('#iosSheet').hidden = true; });
   $('#iosSheet').addEventListener('click', function (e) { if (e.target.id === 'iosSheet') e.currentTarget.hidden = true; });
 
-  /* show iOS banner on load (no beforeinstallprompt fires on iOS) */
-  if (isIOS() && !isStandalone() && !DB.dismissInstall) { setTimeout(syncInstallBanner, 1200); }
-
-  /* deep link from manifest shortcuts */
-  (function () {
-    var p = new URLSearchParams(location.search).get('view');
-    if (p && ['fields', 'tasks', 'money', 'pests'].indexOf(p) >= 0) state.view = p;
-  })();
-
   /* ---------------- service worker ---------------- */
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', function () {
@@ -663,6 +667,223 @@
     });
   }
 
+  /* ===================================================================
+     CLOUD ACCOUNTS (Firebase Auth + Firestore) — optional, config-gated
+     =================================================================== */
+  function cloudConfigured() {
+    var c = window.MFAG_FIREBASE;
+    return !!(c && c.apiKey && c.apiKey !== 'REPLACE_ME');
+  }
+  // Lazy-load the Firebase compat SDK from the CDN (only when cloud is configured).
+  function loadFirebaseSDK(cb) {
+    if (window.firebase && firebase.auth && firebase.firestore) return cb();
+    var base = 'https://www.gstatic.com/firebasejs/10.12.2/';
+    var parts = ['firebase-app-compat.js', 'firebase-auth-compat.js', 'firebase-firestore-compat.js'];
+    (function next(i) {
+      if (i >= parts.length) return cb();
+      var s = document.createElement('script');
+      s.src = base + parts[i];
+      s.onload = function () { next(i + 1); };
+      s.onerror = function () { cb(new Error('sdk')); };
+      document.head.appendChild(s);
+    })(0);
+  }
+  function userDoc() { return cloud.db.collection('users').doc(cloud.uid); }
+
+  function scheduleCloudSave() {
+    clearTimeout(cloud.saveTimer);
+    cloud.saveTimer = setTimeout(function () {
+      if (!cloud.on) return;
+      userDoc().set({ db: DB, updatedAt: Date.now(), client: 'web' }, { merge: true })
+        .then(function () { updateSyncPill(); })
+        .catch(function () { /* queued by Firestore offline persistence; will flush when online */ });
+    }, 700);
+  }
+
+  // Apply a DB coming FROM the cloud without echoing it back up.
+  function applyRemoteDB(remote) {
+    cloud.applying = true;
+    DB = remote;
+    save();            // writes the local cache only (cloud.applying guards the push)
+    cloud.applying = false;
+    render();
+  }
+
+  function startCloudSync(user, onReady) {
+    cloud.on = true; cloud.uid = user.uid; cloud.email = user.email;
+    var cached = load();                 // per-user offline cache (instant, offline-friendly)
+    var booted = false;
+    function bootOnce(db) { DB = db; if (!booted) { booted = true; onReady(); } else { render(); } }
+
+    if (cached) bootOnce(cached);        // show cached data immediately if we have it
+
+    userDoc().get().then(function (snap) {
+      if (snap.exists && snap.data().db) {
+        applyOrBoot(snap.data().db);
+      } else {
+        // First sign-in: migrate any existing on-device data, else seed a fresh farm.
+        var legacy = cached;
+        if (!legacy && STORE_OK) { try { var r = localStorage.getItem(BASE_KEY); legacy = r ? JSON.parse(r) : null; } catch (e) {} }
+        DB = legacy || (function () { var s = seed(); var keep = DB; DB = s; seedTasks(); var out = DB; DB = keep; return out; })();
+        if (cloud.pendingFarm) { DB.settings = DB.settings || {}; DB.settings.farmName = cloud.pendingFarm; cloud.pendingFarm = null; }
+        cloud.applying = true; save(); cloud.applying = false;
+        userDoc().set({ db: DB, updatedAt: Date.now(), client: 'web', createdAt: Date.now() }, { merge: true }).catch(function () {});
+        if (!booted) { booted = true; onReady(); } else { render(); }
+      }
+    }).catch(function () {
+      // Offline and no cloud copy yet: fall back to cache or a fresh seed so the app still opens.
+      if (!booted) { if (!DB) { DB = cached || seed(); if (!cached) seedTasks(); } booted = true; onReady(); }
+    });
+
+    function applyOrBoot(remoteDb) {
+      if (!booted) { DB = remoteDb; cloud.applying = true; save(); cloud.applying = false; booted = true; onReady(); }
+      else applyRemoteDB(remoteDb);
+    }
+
+    // Live updates from other devices.
+    cloud.unsub = userDoc().onSnapshot(function (snap) {
+      if (!snap.exists || snap.metadata.hasPendingWrites) return; // ignore our own local echoes
+      var d = snap.data(); if (d && d.db && booted) applyRemoteDB(d.db);
+    }, function () {});
+  }
+
+  function cloudSignOut() {
+    if (cloud.unsub) { try { cloud.unsub(); } catch (e) {} cloud.unsub = null; }
+    cloud.on = false; cloud.uid = null; cloud.email = null;
+    if (cloud.auth) cloud.auth.signOut();
+  }
+
+  /* ---- auth gate UI ---- */
+  var LEAF = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22V11"/><path d="M12 11c-4 0-6-2-6-6 4 0 6 2 6 6Z"/><path d="M12 9c0-3 2-5 5-5 0 3-2 5-5 5Z"/></svg>';
+  function authMsg(code, fallback) {
+    var m = {
+      'auth/invalid-email': 'That email address looks invalid.',
+      'auth/missing-password': 'Please enter your password.',
+      'auth/weak-password': 'Password must be at least 6 characters.',
+      'auth/email-already-in-use': 'That email already has an account — try signing in.',
+      'auth/invalid-credential': 'Email or password is incorrect.',
+      'auth/wrong-password': 'Email or password is incorrect.',
+      'auth/user-not-found': 'No account found for that email.',
+      'auth/network-request-failed': 'No connection. Check your signal and try again.',
+      'auth/too-many-requests': 'Too many attempts. Wait a moment and try again.'
+    };
+    return m[code] || fallback || 'Something went wrong. Please try again.';
+  }
+  function showAuthGate(mode) { var g = $('#authGate'); if (g) { g.hidden = false; renderAuth(mode || 'signin'); } }
+  function hideAuthGate() { var g = $('#authGate'); if (g) { g.hidden = true; g.innerHTML = ''; } }
+  function renderAuth(mode) {
+    var g = $('#authGate'); if (!g) return;
+    var head = '<div class="ag-brand"><span class="ag-logo">' + LEAF + '</span>MaintainFlow <span class="ag-tag">AG</span></div>';
+    var card;
+    if (mode === 'signup') {
+      card = '<h2>Create your account</h2><p class="ag-sub">Your fields, tasks and costs, backed up and synced across devices.</p>' +
+        '<label>Farm name</label><input id="agFarm" type="text" autocomplete="organization" placeholder="e.g. Kgosi’s Farm">' +
+        '<label>Email</label><input id="agEmail" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com">' +
+        '<label>Password</label><input id="agPass" type="password" autocomplete="new-password" placeholder="At least 6 characters">' +
+        '<div class="ag-msg" id="agMsg" hidden></div>' +
+        '<button class="ag-btn" id="agGo">Create account</button>' +
+        '<div class="ag-alt">Already have an account? <button class="ag-link" id="agToSignin">Sign in</button></div>';
+    } else if (mode === 'reset') {
+      card = '<h2>Reset password</h2><p class="ag-sub">We’ll email you a link to set a new password.</p>' +
+        '<label>Email</label><input id="agEmail" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com">' +
+        '<div class="ag-msg" id="agMsg" hidden></div>' +
+        '<button class="ag-btn" id="agGo">Send reset link</button>' +
+        '<div class="ag-alt"><button class="ag-link" id="agToSignin">Back to sign in</button></div>';
+    } else {
+      card = '<h2>Welcome back</h2><p class="ag-sub">Sign in to reach your farm from any device.</p>' +
+        '<label>Email</label><input id="agEmail" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com">' +
+        '<label>Password</label><input id="agPass" type="password" autocomplete="current-password" placeholder="Your password">' +
+        '<div class="ag-msg" id="agMsg" hidden></div>' +
+        '<button class="ag-btn" id="agGo">Sign in</button>' +
+        '<div class="ag-alt"><button class="ag-link" id="agToReset">Forgot password?</button></div>' +
+        '<div class="ag-alt">New here? <button class="ag-link" id="agToSignup">Create an account</button></div>';
+    }
+    g.innerHTML = '<div class="ag-wrap">' + head + '<div class="ag-card">' + card + '</div><div class="ag-foot">Works offline after your first sign-in.</div></div>';
+    var msg = $('#agMsg', g);
+    function showErr(t) { msg.textContent = t; msg.hidden = false; }
+    function busy(b) { var go = $('#agGo', g); go.disabled = b; go.textContent = b ? 'Please wait…' : (mode === 'signup' ? 'Create account' : mode === 'reset' ? 'Send reset link' : 'Sign in'); }
+    var toSignin = $('#agToSignin', g); if (toSignin) toSignin.onclick = function () { renderAuth('signin'); };
+    var toSignup = $('#agToSignup', g); if (toSignup) toSignup.onclick = function () { renderAuth('signup'); };
+    var toReset = $('#agToReset', g); if (toReset) toReset.onclick = function () { renderAuth('reset'); };
+    $('#agGo', g).onclick = function () {
+      if (!cloud.auth) return showErr('Still connecting — try again in a moment.');
+      var email = ($('#agEmail', g).value || '').trim();
+      msg.hidden = true;
+      if (mode === 'reset') {
+        if (!email) return showErr('Please enter your email.');
+        busy(true);
+        cloud.auth.sendPasswordResetEmail(email).then(function () { busy(false); showErr('Done — check your email for the reset link.'); })
+          .catch(function (e) { busy(false); showErr(authMsg(e.code)); });
+        return;
+      }
+      var pass = ($('#agPass', g).value || '');
+      if (!email) return showErr('Please enter your email.');
+      if (pass.length < 6) return showErr('Password must be at least 6 characters.');
+      busy(true);
+      if (mode === 'signup') {
+        cloud.pendingFarm = ($('#agFarm', g).value || '').trim();
+        cloud.auth.createUserWithEmailAndPassword(email, pass)
+          .catch(function (e) { busy(false); showErr(authMsg(e.code)); });
+      } else {
+        cloud.auth.signInWithEmailAndPassword(email, pass)
+          .catch(function (e) { busy(false); showErr(authMsg(e.code)); });
+      }
+    };
+  }
+  function openAccountSheet() {
+    var host = openModal(
+      '<div class="modal-head"><h3>Account</h3><button class="x" id="mx">&times;</button></div>' +
+      '<div class="acct-row"><span class="acct-ic">' + LEAF + '</span><div class="acct-meta"><b>' + esc(cloud.email || 'Signed in') + '</b><span>' + (navigator.onLine ? 'Synced to your cloud account' : 'Offline — will sync when back online') + '</span></div></div>' +
+      '<button class="btn-danger" id="acctOut">Sign out</button>');
+    $('#mx', host).onclick = closeModal;
+    $('#acctOut', host).onclick = function () { closeModal(); cloudSignOut(); toast('Signed out'); };
+  }
+
+  function bootUI() {
+    /* deep link from manifest shortcuts */
+    var p = new URLSearchParams(location.search).get('view');
+    if (p && ['fields', 'tasks', 'money', 'pests'].indexOf(p) >= 0) state.view = p;
+    /* iOS install banner (no beforeinstallprompt on iOS) */
+    if (isIOS() && !isStandalone() && DB && !DB.dismissInstall) { setTimeout(syncInstallBanner, 1200); }
+    render();
+  }
+
+  function startCloud() {
+    try {
+      firebase.initializeApp(window.MFAG_FIREBASE);
+      cloud.enabled = true;
+      cloud.auth = firebase.auth();
+      cloud.db = firebase.firestore();
+      cloud.db.enablePersistence({ synchronizeTabs: true }).catch(function () {});
+      cloud.auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(function () {});
+      cloud.auth.onAuthStateChanged(function (user) {
+        if (user) {
+          hideAuthGate();
+          startCloudSync(user, bootUI);
+        } else {
+          cloudSignOut();
+          DB = seed();              // harmless placeholder so the (hidden) app never refs null
+          showAuthGate('signin');
+        }
+      });
+    } catch (e) {
+      cloud.enabled = false; initLocalDB(); bootUI();
+    }
+  }
+
   /* ---------------- boot ---------------- */
-  render();
+  if (cloudConfigured()) {
+    showAuthGate('signin');           // show branded gate immediately while the SDK loads
+    loadFirebaseSDK(function (err) {
+      if (err || !(window.firebase && firebase.auth)) {
+        // SDK unreachable (e.g. first run with no signal): degrade to local mode.
+        hideAuthGate(); initLocalDB(); bootUI();
+        return;
+      }
+      startCloud();
+    });
+  } else {
+    initLocalDB();
+    bootUI();
+  }
 })();

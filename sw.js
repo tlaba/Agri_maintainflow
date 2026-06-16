@@ -1,10 +1,11 @@
 /* MaintainFlow Ag — service worker (offline-first) */
-var VERSION = 'mfag-v1.0.5';
+var VERSION = 'mfag-v1.0.6';
 var CORE = [
   './',
   './index.html',
   './css/styles.css',
   './js/app.js',
+  './js/firebase-config.js',
   './manifest.webmanifest',
   './icons/icon-192.png',
   './icons/icon-512.png',
@@ -30,6 +31,11 @@ self.addEventListener('fetch', function (e) {
   var req = e.request;
   if (req.method !== 'GET') return;
   var url = new URL(req.url);
+
+  // Never intercept Firebase Auth / Firestore traffic — let it reach the network
+  // (Firestore handles its own offline persistence). The Firebase SDK itself is
+  // served from gstatic.com and is cached by the cross-origin handler below.
+  if (/(\.|^)(googleapis\.com|firebaseio\.com|firebaseapp\.com|google\.com)$/.test(url.hostname)) return;
 
   // App shell & same-origin: cache-first, fall back to network, then cache the response.
   if (url.origin === location.origin) {

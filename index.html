@@ -93,6 +93,12 @@
 <div class="modal-host" id="modalHost" hidden></div>
 <div class="toast" id="toast" hidden></div>
 
+<!-- auth gate (shown only when cloud login is configured) -->
+<div class="auth-gate" id="authGate" hidden></div>
+
+<!-- Cloud config (tiny). The Firebase SDK itself is loaded lazily by app.js
+     only when this file has real keys — so local mode stays zero-weight. -->
+<script src="js/firebase-config.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

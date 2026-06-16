@@ -64,7 +64,49 @@
   /* ---------------- helpers ---------------- */
   function f() { return 'id' + Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-3); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
-  function money(n) { return 'P ' + Math.round(n).toLocaleString('en-US'); }
+  /* ---------------- localization (auto-detected, overridable) ---------------- */
+  var CUR = {
+    BWP: { sym: 'P', loc: 'en-BW' }, ZAR: { sym: 'R', loc: 'en-ZA' }, USD: { sym: '$', loc: 'en-US' },
+    ZMW: { sym: 'ZK', loc: 'en-ZM' }, NAD: { sym: 'N$', loc: 'en-NA' }, MZN: { sym: 'MT', loc: 'pt-MZ' },
+    MWK: { sym: 'MK', loc: 'en-MW' }, LSL: { sym: 'L', loc: 'en-LS' }, SZL: { sym: 'E', loc: 'en-SZ' },
+    KES: { sym: 'KSh', loc: 'en-KE' }, TZS: { sym: 'TSh', loc: 'en-TZ' }, UGX: { sym: 'USh', loc: 'en-UG' },
+    NGN: { sym: '₦', loc: 'en-NG' }, GHS: { sym: '₵', loc: 'en-GH' }, RWF: { sym: 'FRw', loc: 'en-RW' }, ETB: { sym: 'Br', loc: 'en-ET' }
+  };
+  var COUNTRIES = {
+    BW: { name: 'Botswana', flag: '🇧🇼', dial: '+267', cur: 'BWP', greet: 'Dumela' },
+    ZA: { name: 'South Africa', flag: '🇿🇦', dial: '+27', cur: 'ZAR', greet: 'Sawubona' },
+    ZW: { name: 'Zimbabwe', flag: '🇿🇼', dial: '+263', cur: 'USD', greet: 'Mhoro' },
+    ZM: { name: 'Zambia', flag: '🇿🇲', dial: '+260', cur: 'ZMW', greet: 'Muli bwanji' },
+    NA: { name: 'Namibia', flag: '🇳🇦', dial: '+264', cur: 'NAD', greet: 'Moro' },
+    MZ: { name: 'Mozambique', flag: '🇲🇿', dial: '+258', cur: 'MZN', greet: 'Olá' },
+    MW: { name: 'Malawi', flag: '🇲🇼', dial: '+265', cur: 'MWK', greet: 'Moni' },
+    LS: { name: 'Lesotho', flag: '🇱🇸', dial: '+266', cur: 'LSL', greet: 'Lumela' },
+    SZ: { name: 'Eswatini', flag: '🇸🇿', dial: '+268', cur: 'SZL', greet: 'Sawubona' },
+    KE: { name: 'Kenya', flag: '🇰🇪', dial: '+254', cur: 'KES', greet: 'Jambo' },
+    TZ: { name: 'Tanzania', flag: '🇹🇿', dial: '+255', cur: 'TZS', greet: 'Jambo' },
+    UG: { name: 'Uganda', flag: '🇺🇬', dial: '+256', cur: 'UGX', greet: 'Oli otya' },
+    NG: { name: 'Nigeria', flag: '🇳🇬', dial: '+234', cur: 'NGN', greet: 'Sannu' },
+    GH: { name: 'Ghana', flag: '🇬🇭', dial: '+233', cur: 'GHS', greet: 'Akwaaba' },
+    RW: { name: 'Rwanda', flag: '🇷🇼', dial: '+250', cur: 'RWF', greet: 'Muraho' },
+    ET: { name: 'Ethiopia', flag: '🇪🇹', dial: '+251', cur: 'ETB', greet: 'Selam' },
+    OT: { name: 'Other', flag: '🌍', dial: '+', cur: 'USD', greet: 'Hello' }
+  };
+  var TZ_COUNTRY = { 'Africa/Gaborone': 'BW', 'Africa/Johannesburg': 'ZA', 'Africa/Harare': 'ZW', 'Africa/Lusaka': 'ZM', 'Africa/Windhoek': 'NA', 'Africa/Maputo': 'MZ', 'Africa/Blantyre': 'MW', 'Africa/Maseru': 'LS', 'Africa/Mbabane': 'SZ', 'Africa/Nairobi': 'KE', 'Africa/Dar_es_Salaam': 'TZ', 'Africa/Kampala': 'UG', 'Africa/Lagos': 'NG', 'Africa/Accra': 'GH', 'Africa/Kigali': 'RW', 'Africa/Addis_Ababa': 'ET' };
+  function detectCountry() {
+    try { var tz = Intl.DateTimeFormat().resolvedOptions().timeZone; if (TZ_COUNTRY[tz]) return TZ_COUNTRY[tz]; } catch (e) {}
+    try { var l = (navigator.language || '').split('-')[1]; if (l && COUNTRIES[l.toUpperCase()]) return l.toUpperCase(); } catch (e) {}
+    return 'BW';
+  }
+  function countryInfo() { return (DB && DB.settings && COUNTRIES[DB.settings.country]) || COUNTRIES.BW; }
+  function curInfo() { return CUR[countryInfo().cur] || CUR.BWP; }
+  function curSym() { return curInfo().sym; }
+  function greetOf() { return countryInfo().greet; }
+  function symFor(code) { return (CUR[code] && CUR[code].sym) || code; }
+  function money(n) {
+    var c = curInfo(), v = Math.round(+n || 0), s;
+    try { s = new Intl.NumberFormat(c.loc).format(v); } catch (e) { s = v.toLocaleString('en-US'); }
+    return c.sym + ' ' + s;
+  }
   function $(s, r) { return (r || document).querySelector(s); }
   function el(html) { var t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstElementChild; }
   var CROP = {
@@ -136,7 +178,7 @@
         '<div class="wordmark"><span class="logo-tile"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22V11"/><path d="M12 11c-4 0-6-2-6-6 4 0 6 2 6 6Z"/><path d="M12 9c0-3 2-5 5-5 0 3-2 5-5 5Z"/></svg></span>MaintainFlow <span class="ag-tag">AG</span></div>' +
         '<button class="offline" id="syncPill" type="button"><span class="dot"></span><span id="syncText">Offline-ready</span></button>' +
       '</div>' +
-      '<div class="tb-greet">' + esc(DB.settings.greeting) + ',<b>' + esc(DB.settings.farmName) + '</b></div>';
+      '<div class="tb-greet">' + esc(greetOf()) + ',<b>' + esc(DB.settings.farmName) + '</b></div>';
     wireSyncPill(); updateSyncPill();
   }
 
@@ -515,8 +557,8 @@
     var perHa = ha ? spend / ha : 0;
     v.appendChild(el('<div class="tb-greet" style="color:var(--muted);margin:2px 2px 14px"><b style="color:var(--navy);font-family:\'Space Grotesk\';font-size:15px;display:block">Season ' + esc(DB.settings.season) + ' · whole farm</b></div>'));
     v.appendChild(el(
-      '<div class="big2"><div class="big-card"><div class="l">Spend to date</div><div class="v"><span class="c">P </span>' + Math.round(spend).toLocaleString('en-US') + '</div><div class="trend">across ' + DB.fields.length + ' fields</div></div>' +
-      '<div class="big-card"><div class="l">Cost per ha</div><div class="v"><span class="c">P </span>' + Math.round(perHa).toLocaleString('en-US') + '</div><div class="trend">' + ha.toFixed(1) + ' ha total</div></div></div>'));
+      '<div class="big2"><div class="big-card"><div class="l">Spend to date</div><div class="v"><span class="c">' + curSym() + ' </span>' + Math.round(spend).toLocaleString('en-US') + '</div><div class="trend">across ' + DB.fields.length + ' fields</div></div>' +
+      '<div class="big-card"><div class="l">Cost per ha</div><div class="v"><span class="c">' + curSym() + ' </span>' + Math.round(perHa).toLocaleString('en-US') + '</div><div class="trend">' + ha.toFixed(1) + ' ha total</div></div></div>'));
 
     // breakdown
     var cats = expenseByCat();
@@ -533,15 +575,21 @@
     v.appendChild(bd);
 
     // market prices (sample, offline)
-    v.appendChild(el('<div class="sec-h"><h3>Market prices · Gaborone</h3><span class="link">sample</span></div>'));
-    var mk = el('<div class="market"></div>');
-    [['🌽', 'Maize (white)', 'per tonne', 'P 3,950', 'up', '▲ 2.1%'],
-     ['🌾', 'Wheat', 'per tonne', 'P 5,400', 'down', '▼ 0.8%'],
-     ['🫛', 'Soybean', 'per tonne', 'P 7,200', 'up', '▲ 1.4%'],
-     ['🥬', 'Cabbage', 'per crate', 'P 95', 'up', '▲ 3.0%']].forEach(function (r) {
-      mk.appendChild(el('<div class="mrow"><div class="cn"><span class="ci crop-veg">' + r[0] + '</span><div><div class="cnm">' + r[1] + '</div><div class="cu">' + r[2] + '</div></div></div><div class="pr"><div class="px">' + r[3] + '</div><div class="ch ' + r[4] + '">' + r[5] + '</div></div></div>'));
-    });
-    v.appendChild(mk);
+    // market prices — sample feed only available for Botswana for now
+    if ((DB.settings.country || 'BW') === 'BW') {
+      v.appendChild(el('<div class="sec-h"><h3>Market prices · Gaborone</h3><span class="link">sample</span></div>'));
+      var mk = el('<div class="market"></div>');
+      [['🌽', 'Maize (white)', 'per tonne', 'P 3,950', 'up', '▲ 2.1%'],
+       ['🌾', 'Wheat', 'per tonne', 'P 5,400', 'down', '▼ 0.8%'],
+       ['🫛', 'Soybean', 'per tonne', 'P 7,200', 'up', '▲ 1.4%'],
+       ['🥬', 'Cabbage', 'per crate', 'P 95', 'up', '▲ 3.0%']].forEach(function (r) {
+        mk.appendChild(el('<div class="mrow"><div class="cn"><span class="ci crop-veg">' + r[0] + '</span><div><div class="cnm">' + r[1] + '</div><div class="cu">' + r[2] + '</div></div></div><div class="pr"><div class="px">' + r[3] + '</div><div class="ch ' + r[4] + '">' + r[5] + '</div></div></div>'));
+      });
+      v.appendChild(mk);
+    } else {
+      v.appendChild(el('<div class="sec-h"><h3>Market prices · ' + esc(countryInfo().name) + '</h3></div>'));
+      v.appendChild(el('<p class="hint">Local market prices for ' + esc(countryInfo().name) + ' are coming soon.</p>'));
+    }
 
     // recent expenses
     v.appendChild(el('<div class="sec-h"><h3>Recent expenses</h3><span class="link" id="addExp2">+ Log</span></div>'));
@@ -558,12 +606,14 @@
       '<button class="acct-link" id="mYa">Yield analytics' + (isPro() ? '' : ' · Pro') + '</button>' +
       '<button class="acct-link" id="mLs">Lender summary' + (isPro() ? '' : ' · Pro') + '</button>' +
       '<button class="acct-link" id="mExport">Export records (CSV / PDF)</button>' +
+      '<button class="acct-link" id="mRegion">Region: ' + esc(countryInfo().name) + '</button>' +
       '<button class="acct-link" id="mPro">' + (isPro() ? 'Manage Pro' : 'Upgrade to Pro') + '</button>' +
       '<button class="acct-link" id="mPriv">Privacy</button></div>');
     v.appendChild(links);
     $('#mYa', links).onclick = function () { requirePro(function () { go('analytics'); }); };
     $('#mLs', links).onclick = function () { requirePro(function () { go('lender'); }); };
     $('#mExport', links).onclick = openExportSheet;
+    $('#mRegion', links).onclick = openRegionSheet;
     $('#mPro', links).onclick = openUpgradeSheet;
     $('#mPriv', links).onclick = openPrivacy;
     setFab('+ Expense', openExpenseForm);
@@ -595,6 +645,7 @@
     DB.settings = DB.settings || {};
     if (!DB.yields) DB.yields = [];
     if (!DB.settings.plan) DB.settings.plan = 'free';
+    if (!DB.settings.country) DB.settings.country = detectCountry();
   }
   function billingConfigured() { var b = window.MFAG_BILLING; return !!(b && b.flwPublicKey && b.flwPublicKey !== 'REPLACE_ME'); }
   function isPro() {
@@ -694,11 +745,11 @@
     if (pro) {
       var until = (cloud.entitlement && cloud.entitlement.proUntil) ? ' · valid until ' + fmtDate(new Date(cloud.entitlement.proUntil).toISOString().slice(0, 10)) : '';
       body = '<div class="pro-on">✓ Pro is active' + until + '</div>' +
-        (billingConfigured() ? '<button class="btn-soft" id="proRenew">Extend Pro · P' + b.priceBWP + '</button>' : '<button class="btn-soft" id="proOff">Switch back to Free</button>');
+        (billingConfigured() ? '<button class="btn-soft" id="proRenew">Extend Pro · ' + symFor(b.currency) + ' ' + b.priceBWP + '</button>' : '<button class="btn-soft" id="proOff">Switch back to Free</button>');
     } else if (billingConfigured()) {
       body = (!cloud.on)
         ? '<button class="btn-primary" id="proSignin">Sign in to upgrade</button><p class="hint" style="text-align:center;margin-top:8px">Pro is tied to your account so it works across devices.</p>'
-        : '<button class="btn-primary" id="proPay">Get Pro · P' + b.priceBWP + ' / ' + (b.days || 30) + ' days</button><p class="hint" style="text-align:center;margin-top:8px">Pay by card or mobile money via Flutterwave.</p>';
+        : '<button class="btn-primary" id="proPay">Get Pro · ' + symFor(b.currency) + ' ' + b.priceBWP + ' / ' + (b.days || 30) + ' days</button><p class="hint" style="text-align:center;margin-top:8px">Pay by card or mobile money via Flutterwave.</p>';
     } else {
       body = '<button class="btn-primary" id="proGo">Activate Pro</button><p class="hint" style="text-align:center;margin-top:8px">Billing isn’t connected yet — this enables Pro for evaluation.</p>';
     }
@@ -712,6 +763,25 @@
     bind('proSignin', function () { closeModal(); promptSignIn(); });
   }
 
+  function greetOfCode(code) { return (COUNTRIES[code] || COUNTRIES.BW).greet; }
+  function openRegionSheet() {
+    var cur = (DB.settings && DB.settings.country) || 'BW';
+    var opts = Object.keys(COUNTRIES).map(function (k) {
+      var c = COUNTRIES[k];
+      return '<option value="' + k + '"' + (k === cur ? ' selected' : '') + '>' + c.flag + ' ' + c.name + ' · ' + symFor(c.cur) + '</option>';
+    }).join('');
+    var host = openModal('<div class="modal-head"><h3>Region &amp; currency</h3><button class="x" id="mx">&times;</button></div>' +
+      '<p class="modal-note">Sets your greeting and the currency shown across the app.</p>' +
+      '<div class="field-group"><label>Country</label><select id="rgSel">' + opts + '</select></div>' +
+      '<button class="btn-primary" id="rgSave">Save</button>');
+    $('#mx', host).onclick = closeModal;
+    $('#rgSave', host).onclick = function () {
+      DB.settings = DB.settings || {};
+      DB.settings.country = $('#rgSel', host).value;
+      DB.settings.greeting = greetOfCode(DB.settings.country);
+      save(); closeModal(); render(); toast('Region updated');
+    };
+  }
   function privacyHtml() {
     return '<p>MaintainFlow Ag stores your farm records (fields, work orders, expenses, harvests and, if you choose, your location) to run the app and — when you sign in — to sync them across your devices.</p>' +
       '<p>Your data is yours. We do not sell personal data. Aggregated, anonymised insights may be used to improve the service. You can export or delete your data any time from the Account screen.</p>' +
@@ -1457,12 +1527,14 @@
       '<button class="btn-primary" id="acctSave">Save changes</button>' +
       pwBlock +
       '<div class="acct-links"><button class="acct-link" id="acctExport">Export records</button>' +
+      '<button class="acct-link" id="acctRegion">Region: ' + esc(countryInfo().name) + '</button>' +
       '<button class="acct-link" id="acctPro">' + (isPro() ? 'Manage Pro' : 'Upgrade to Pro') + '</button>' +
       '<button class="acct-link" id="acctPriv">Privacy</button></div>' +
       '<button class="btn-soft" id="acctOut">Sign out</button>' +
       '<button class="acct-del" id="acctDel">Delete account</button>');
     $('#mx', host).onclick = closeModal;
     $('#acctExport', host).onclick = function () { closeModal(); openExportSheet(); };
+    $('#acctRegion', host).onclick = function () { closeModal(); openRegionSheet(); };
     $('#acctPro', host).onclick = function () { closeModal(); openUpgradeSheet(); };
     $('#acctPriv', host).onclick = function () { closeModal(); openPrivacy(); };
     $('#acctSave', host).onclick = function () {

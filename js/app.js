@@ -596,8 +596,60 @@
     if (!DB.yields) DB.yields = [];
     if (!DB.settings.plan) DB.settings.plan = 'free';
   }
-  function isPro() { return !!(DB && DB.settings && DB.settings.plan === 'pro'); }
+  function billingConfigured() { var b = window.MFAG_BILLING; return !!(b && b.flwPublicKey && b.flwPublicKey !== 'REPLACE_ME'); }
+  function isPro() {
+    var ent = cloud.entitlement;
+    if (ent && ent.pro && (!ent.proUntil || ent.proUntil > Date.now())) return true;   // server-verified
+    if (!billingConfigured()) return !!(DB && DB.settings && DB.settings.plan === 'pro'); // evaluation mode
+    return false;
+  }
   function requirePro(cb) { if (isPro()) return cb(); openUpgradeSheet(); }
+
+  function loadFlutterwave(cb) {
+    if (window.FlutterwaveCheckout) return cb();
+    var s = document.createElement('script'); s.src = 'https://checkout.flutterwave.com/v3.js';
+    s.onload = function () { cb(); }; s.onerror = function () { cb(new Error('flw')); };
+    document.head.appendChild(s);
+  }
+  function loadFunctionsSDK(cb) {
+    if (window.firebase && firebase.functions) return cb();
+    var s = document.createElement('script'); s.src = 'https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js';
+    s.onload = function () { cb(); }; s.onerror = function () { cb(new Error('fn')); };
+    document.head.appendChild(s);
+  }
+  function startCheckout() {
+    if (!cloud.on) { promptSignIn(); return; }
+    var b = window.MFAG_BILLING;
+    loadFlutterwave(function (err) {
+      if (err || !window.FlutterwaveCheckout) { toast('Couldn’t load payment — check your connection.'); return; }
+      FlutterwaveCheckout({
+        public_key: b.flwPublicKey,
+        tx_ref: 'mfag-' + cloud.uid + '-' + Date.now(),
+        amount: b.priceBWP, currency: b.currency || 'BWP',
+        payment_options: 'card,mobilemoneybw,mobilemoney,ussd,banktransfer',
+        customer: { email: cloud.email || (cloud.uid + '@maintainflow.app'), phonenumber: cloud.phone || '', name: (DB.settings && DB.settings.farmName) || 'Farmer' },
+        meta: { uid: cloud.uid },
+        customizations: { title: 'MaintainFlow Pro', description: (b.days || 30) + ' days of Pro' },
+        callback: function (resp) { onPaid(resp); },
+        onclose: function () {}
+      });
+    });
+  }
+  function onPaid(resp) {
+    var ok = resp && (resp.status === 'successful' || resp.status === 'completed');
+    var txId = resp && (resp.transaction_id || resp.id);
+    if (!ok || !txId) return;
+    toast('Confirming payment…');
+    loadFunctionsSDK(function (err) {
+      if (err || !(window.firebase && firebase.functions)) { toast('Payment received — Pro will activate shortly.'); return; }
+      try {
+        var fns = firebase.app().functions((window.MFAG_BILLING && window.MFAG_BILLING.functionsRegion) || 'us-central1');
+        fns.httpsCallable('verifyPayment')({ transaction_id: txId })
+          .then(function () { closeModal(); render(); toast('Pro activated 🎉'); })
+          .catch(function () { toast('Payment received — activating shortly…'); });
+      } catch (e) { toast('Payment received — activating shortly…'); }
+    });
+  }
 
   function openYieldForm(fieldId, existing) {
     var fld = fieldById(fieldId); if (!fld) return;
@@ -634,16 +686,30 @@
   }
 
   function openUpgradeSheet() {
-    var pro = isPro();
-    var host = openModal(
-      '<div class="modal-head"><h3>MaintainFlow Pro</h3><button class="x" id="mx">&times;</button></div>' +
+    var pro = isPro(), b = window.MFAG_BILLING || {};
+    var head = '<div class="modal-head"><h3>MaintainFlow Pro</h3><button class="x" id="mx">&times;</button></div>' +
       '<p class="modal-note">Tools for growing and financing your farm:</p>' +
-      '<ul class="pro-list"><li>Printable PDF records to share with lenders &amp; buyers</li><li>Input-supplier marketplace &amp; quote requests</li><li>Multi-season yield analytics <span class="soon">soon</span></li><li>Priority support</li></ul>' +
-      (pro ? '<div class="pro-on">✓ Pro is active on your account</div><button class="btn-soft" id="proOff">Switch back to Free</button>'
-           : '<button class="btn-primary" id="proGo">Activate Pro</button><p class="hint" style="text-align:center;margin-top:8px">Billing isn’t connected yet — this enables Pro for evaluation.</p>'));
+      '<ul class="pro-list"><li>Printable PDF records for lenders &amp; buyers</li><li>Yield analytics &amp; lender summary</li><li>Input-supplier marketplace &amp; quotes</li><li>Priority support</li></ul>';
+    var body;
+    if (pro) {
+      var until = (cloud.entitlement && cloud.entitlement.proUntil) ? ' · valid until ' + fmtDate(new Date(cloud.entitlement.proUntil).toISOString().slice(0, 10)) : '';
+      body = '<div class="pro-on">✓ Pro is active' + until + '</div>' +
+        (billingConfigured() ? '<button class="btn-soft" id="proRenew">Extend Pro · P' + b.priceBWP + '</button>' : '<button class="btn-soft" id="proOff">Switch back to Free</button>');
+    } else if (billingConfigured()) {
+      body = (!cloud.on)
+        ? '<button class="btn-primary" id="proSignin">Sign in to upgrade</button><p class="hint" style="text-align:center;margin-top:8px">Pro is tied to your account so it works across devices.</p>'
+        : '<button class="btn-primary" id="proPay">Get Pro · P' + b.priceBWP + ' / ' + (b.days || 30) + ' days</button><p class="hint" style="text-align:center;margin-top:8px">Pay by card or mobile money via Flutterwave.</p>';
+    } else {
+      body = '<button class="btn-primary" id="proGo">Activate Pro</button><p class="hint" style="text-align:center;margin-top:8px">Billing isn’t connected yet — this enables Pro for evaluation.</p>';
+    }
+    var host = openModal(head + body);
     $('#mx', host).onclick = closeModal;
-    var go2 = $('#proGo', host); if (go2) go2.onclick = function () { DB.settings.plan = 'pro'; save(); closeModal(); render(); toast('Pro activated 🎉'); };
-    var off = $('#proOff', host); if (off) off.onclick = function () { DB.settings.plan = 'free'; save(); closeModal(); render(); toast('Switched to Free'); };
+    function bind(id, fn) { var e = $('#' + id, host); if (e) e.onclick = fn; }
+    bind('proGo', function () { DB.settings.plan = 'pro'; save(); closeModal(); render(); toast('Pro activated 🎉'); });
+    bind('proOff', function () { DB.settings.plan = 'free'; save(); closeModal(); render(); toast('Switched to Free'); });
+    bind('proPay', function () { closeModal(); startCheckout(); });
+    bind('proRenew', function () { closeModal(); startCheckout(); });
+    bind('proSignin', function () { closeModal(); promptSignIn(); });
   }
 
   function privacyHtml() {
@@ -1196,10 +1262,20 @@
       if (!snap.exists || snap.metadata.hasPendingWrites) return; // ignore our own local echoes
       var d = snap.data(); if (d && d.db && booted) applyRemoteDB(d.db);
     }, function () {});
+
+    // Server-verified Pro entitlement (client can read but not write it).
+    if (cloud.entUnsub) { try { cloud.entUnsub(); } catch (e) {} }
+    cloud.entitlement = null;
+    cloud.entUnsub = cloud.db.collection('entitlements').doc(cloud.uid).onSnapshot(function (snap) {
+      cloud.entitlement = snap.exists ? snap.data() : null;
+      if (booted) render();
+    }, function () {});
   }
 
   function cloudSignOut() {
     if (cloud.unsub) { try { cloud.unsub(); } catch (e) {} cloud.unsub = null; }
+    if (cloud.entUnsub) { try { cloud.entUnsub(); } catch (e) {} cloud.entUnsub = null; }
+    cloud.entitlement = null;
     cloud.on = false; cloud.uid = null; cloud.email = null;
     if (cloud.auth) cloud.auth.signOut();
   }

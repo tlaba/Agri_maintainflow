@@ -67,7 +67,21 @@ Commit the edited `js/firebase-config.js` and push. Once it's live:
 - **One document per user:** all your farm data lives at `users/{your-uid}`.
 - **Free tier limits** (Spark) are far above a single farm's usage.
 
+## Optional: enable phone-number (SMS) login
+The app has a "Sign in with phone" option (country code + number → SMS code).
+It is **off on the server until you enable it**, and it is **not free**:
+
+1. **Upgrade to the Blaze plan** — Firebase Console → ⚙️ → **Usage and billing →
+   Details & settings → Modify plan → Blaze** (pay-as-you-go). SMS is billed per
+   message; there is a small free monthly allowance. You can set a budget alert.
+2. **Enable the Phone provider** — Authentication → **Sign-in method** →
+   **Phone** → Enable → Save.
+3. (Optional) Add **test phone numbers** under Phone → *Phone numbers for testing*
+   so you can verify the flow without spending on SMS.
+4. Make sure `agri.maintainflow.pro` is in **Authorized domains** (same as email).
+
+If Phone isn't enabled, the email flow is unaffected and tapping **Send code**
+just shows "Phone sign-in isn't enabled on the server yet."
+
 ## Notes / options
-- **Phone-number (SMS) login** is possible but needs the pay-as-you-go Blaze
-  plan (SMS costs money). Email/password is free — start there.
 - To go back to local-only mode, set `apiKey` back to `"REPLACE_ME"`.

@@ -243,6 +243,12 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;color:inhe
 .auth-gate .ag-btn:disabled{opacity:.6}
 .auth-gate .ag-alt{text-align:center;font-size:13px;color:var(--muted);margin-top:13px}
 .auth-gate .ag-link{color:var(--green-deep);font-weight:700;font-size:13px}
+.auth-gate .ag-opt{color:var(--muted);font-weight:500;font-size:11px}
+.auth-gate .ag-phone{display:flex;gap:8px}
+.auth-gate .ag-phone select{flex:0 0 auto;max-width:46%;border:1px solid var(--hair);background:var(--sand);border-radius:11px;padding:13px 8px;font-size:14px;color:var(--ink)}
+.auth-gate .ag-phone input{flex:1;min-width:0}
+.auth-gate #agRecaptcha{margin-top:4px}
+.auth-gate #agCode{letter-spacing:.4em;font-size:18px;text-align:center;font-family:'Space Grotesk',sans-serif}
 .auth-gate .ag-guest{display:block;width:100%;margin-top:16px;padding-top:14px;border-top:1px solid var(--hair);color:var(--muted);font-size:13px;font-weight:600}
 .auth-gate .ag-foot{text-align:center;color:#dff0e0;font-size:12px;margin-top:18px}
 

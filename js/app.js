@@ -28,7 +28,7 @@
   function addDays(n) { var d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); }
   function iso(y, m, d) { return new Date(y, m - 1, d).toISOString().slice(0, 10); }
   var YR = today().getFullYear();
-  var APP_VERSION = '1.1.9';
+  var APP_VERSION = '1.2.0';
   var CONTACT_EMAIL = 'info@maintainflow.pro';
   var CONTACT_TOPICS = ['Bug report', 'Feature request', 'Billing & Pro', 'Account & login', 'Partnership / sales', 'Something else'];
 
@@ -948,25 +948,43 @@
       navigator.clipboard.writeText(t).then(function () { toast('Copied ' + t); }).catch(function () { toast(t); });
     } else { toast(t); }
   }
+  function formEncode(data) {
+    return Object.keys(data).map(function (k) { return encodeURIComponent(k) + '=' + encodeURIComponent(data[k]); }).join('&');
+  }
+  function mailtoFallback(topic, email, msg) {
+    var subject = '[' + topic + '] MaintainFlow Ag';
+    var body = msg + '\n\n—\nFrom: ' + (email || '(no email given)') + '\nSent from MaintainFlow Ag · v' + APP_VERSION + ' · ' + countryInfo().name + ' · ' + (isPro() ? 'Pro' : 'Free');
+    window.location.href = 'mailto:' + CONTACT_EMAIL + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
+  }
   function openContactSheet(presetTopic) {
+    var prefill = (cloud.on && cloud.email) ? cloud.email : '';
     var host = openModal(
       '<div class="modal-head"><h3>Contact us</h3><button class="x" id="mx">&times;</button></div>' +
-      '<p class="sheet-note">Pick a topic and write your message — we usually reply within 1–2 working days. Tapping send opens your email app.</p>' +
+      '<p class="sheet-note">Pick a topic and write your message — we usually reply within 1–2 working days.</p>' +
       '<div class="field-group"><label>What’s this about?</label><select id="cTopic">' + CONTACT_TOPICS.map(function (t) { return '<option' + (t === presetTopic ? ' selected' : '') + '>' + t + '</option>'; }).join('') + '</select></div>' +
+      '<div class="field-group"><label>Your email</label><input id="cEmail" type="email" inputmode="email" value="' + esc(prefill) + '" placeholder="you@example.com"></div>' +
       '<div class="field-group"><label>Message</label><textarea id="cMsg" rows="5" placeholder="Tell us what’s happening…"></textarea></div>' +
-      '<button class="btn-primary" id="cSend">Send email</button>' +
+      '<button class="btn-primary" id="cSend">Send message</button>' +
       '<div class="contact-alt">or email <a href="mailto:' + CONTACT_EMAIL + '">' + CONTACT_EMAIL + '</a> <button class="link-btn" id="cCopy">Copy</button></div>');
     $('#mx', host).onclick = closeModal;
     $('#cCopy', host).onclick = function () { copyText(CONTACT_EMAIL); };
     $('#cSend', host).onclick = function () {
       var topic = $('#cTopic', host).value;
+      var email = $('#cEmail', host).value.trim();
       var msg = $('#cMsg', host).value.trim();
       if (!msg) { toast('Add a short message first'); return; }
-      var subject = '[' + topic + '] MaintainFlow Ag';
-      var body = msg + '\n\n—\nSent from MaintainFlow Ag · v' + APP_VERSION + ' · ' + countryInfo().name + ' · ' + (isPro() ? 'Pro' : 'Free');
-      window.location.href = 'mailto:' + CONTACT_EMAIL + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
-      closeModal();
-      toast('Opening your email app…');
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { toast('Add your email so we can reply'); return; }
+      var btn = $('#cSend', host); btn.disabled = true; btn.textContent = 'Sending…';
+      var payload = {
+        'form-name': 'contact', 'bot-field': '', topic: topic, email: email, message: msg,
+        context: 'v' + APP_VERSION + ' · ' + countryInfo().name + ' · ' + (isPro() ? 'Pro' : 'Free')
+      };
+      fetch('/', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: formEncode(payload) })
+        .then(function (r) { if (!r.ok) throw new Error('bad status'); closeModal(); toast('Message sent — thank you'); })
+        .catch(function () {
+          // offline or Forms unavailable: fall back to the user's mail app so nothing is lost
+          closeModal(); mailtoFallback(topic, email, msg); toast('Opening your email app…');
+        });
     };
   }
   function showConsent() {

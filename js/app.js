@@ -45,6 +45,11 @@
         { id: f(), fieldId: null, category: 'Seed',       amount: 1542, dateISO: addDays(-60), note: 'Maize & soybean seed' },
         { id: f(), fieldId: null, category: 'Fuel',       amount: 771,  dateISO: addDays(-25), note: 'Tractor diesel' },
         { id: f(), fieldId: null, category: 'Labour',     amount: 579,  dateISO: addDays(-10), note: 'Weeding crew' }
+      ],
+      equipment: [
+        { id: f(), name: 'Massey Ferguson 375', kind: 'tractor', make: '4WD · 75 hp', hours: 3120, note: '', lastServiceISO: addDays(-78), intervalDays: 90, logs: [] },
+        { id: f(), name: 'Boom sprayer', kind: 'sprayer', make: '600 L trailed', hours: 0, note: 'Calibrate before season', lastServiceISO: addDays(-200), intervalDays: 180, logs: [] },
+        { id: f(), name: 'Borehole pump', kind: 'pump', make: 'Submersible 2.2 kW', hours: 0, note: '', lastServiceISO: addDays(-30), intervalDays: 180, logs: [] }
       ]
     };
   }
@@ -626,12 +631,168 @@
   }
 
   /* ===================================================================
+     EQUIPMENT MAINTENANCE
+     =================================================================== */
+  var EQUIP_KINDS = {
+    tractor:   { e: '🚜', label: 'Tractor' },
+    implement: { e: '⚙️', label: 'Implement' },
+    sprayer:   { e: '🌫️', label: 'Sprayer' },
+    pump:      { e: '💧', label: 'Pump' },
+    vehicle:   { e: '🛻', label: 'Vehicle' },
+    other:     { e: '🧰', label: 'Other' }
+  };
+  var SERVICE_TYPES = ['Service', 'Inspection', 'Repair', 'Part replaced', 'Other'];
+  var INTERVALS = [ [30, 'Monthly'], [90, 'Every 3 months'], [180, 'Every 6 months'], [365, 'Yearly'] ];
+  function kindOf(k) { return EQUIP_KINDS[k] || EQUIP_KINDS.other; }
+  function nextServiceISO(eq) {
+    var base = eq.lastServiceISO || addDays(0);
+    var d = new Date(base + 'T00:00'); d.setDate(d.getDate() + (eq.intervalDays || 90));
+    return d.toISOString().slice(0, 10);
+  }
+  // returns 'over' | 'soon' | 'ok' and days until next service (negative = overdue)
+  function serviceState(eq) {
+    var days = daysBetween(nextServiceISO(eq));
+    if (days < 0) return { st: 'over', days: days };
+    if (days <= 14) return { st: 'soon', days: days };
+    return { st: 'ok', days: days };
+  }
+  function equipDueCount() {
+    if (!DB || !DB.equipment) return 0;
+    return DB.equipment.filter(function (eq) { return serviceState(eq).st !== 'ok'; }).length;
+  }
+
+  function viewEquipment() {
+    homeTopbar();
+    var v = $('#view'); v.innerHTML = '';
+    var due = equipDueCount();
+    v.appendChild(el('<div class="sec-h"><h3>Equipment &amp; maintenance</h3><span class="link">' + (due ? due + ' due' : DB.equipment.length + ' assets') + '</span></div>'));
+    if (!DB.equipment.length) {
+      v.appendChild(emptyState('No equipment yet', 'Add a tractor, pump or implement to track its service schedule and repair history.'));
+    } else {
+      DB.equipment.slice().sort(function (a, b) { return nextServiceISO(a) < nextServiceISO(b) ? -1 : 1; }).forEach(function (eq) {
+        v.appendChild(equipCard(eq));
+      });
+    }
+    setFab('+ Equipment', function () { openEquipForm(); });
+  }
+
+  function equipCard(eq) {
+    var ss = serviceState(eq);
+    var k = kindOf(eq.kind);
+    var pill = { over: ['p-over', 'Service overdue ' + Math.abs(ss.days) + 'd'], soon: ['p-due', ss.days === 0 ? 'Service due today' : 'Service in ' + ss.days + 'd'], ok: ['p-sched', 'Next ' + fmtDate(nextServiceISO(eq))] }[ss.st];
+    var meta = [];
+    if (eq.make) meta.push(esc(eq.make));
+    if (eq.hours) meta.push(esc(eq.hours) + ' hrs');
+    meta.push('Last serviced ' + (eq.lastServiceISO ? fmtDate(eq.lastServiceISO) : '—'));
+    var spend = (eq.logs || []).reduce(function (s, l) { return s + (l.cost || 0); }, 0);
+    if (spend > 0) meta.push(money(spend) + ' upkeep');
+    var card = el(
+      '<div class="wo ' + ss.st + '"><div class="wo-top"><span class="type">' + k.e + ' ' + esc(k.label.toUpperCase()) + '</span><span class="pill ' + pill[0] + '">' + pill[1] + '</span></div>' +
+      '<div class="name">' + esc(eq.name) + '</div><div class="det">' + meta.join(' · ') + (eq.note ? '<br><span style="color:var(--muted)">' + esc(eq.note) + '</span>' : '') + '</div>' +
+      '<div class="wo-actions"></div></div>');
+    var act = $('.wo-actions', card);
+    var log = el('<button class="done-btn">Log service</button>');
+    log.addEventListener('click', function () { openServiceForm(eq); });
+    act.appendChild(log);
+    var edit = el('<button>Edit</button>');
+    edit.addEventListener('click', function () { openEquipForm(eq); });
+    act.appendChild(edit);
+    if ((eq.logs || []).length) {
+      var hist = el('<button>History</button>');
+      hist.addEventListener('click', function () { openServiceHistory(eq); });
+      act.appendChild(hist);
+    }
+    return card;
+  }
+
+  function openEquipForm(existing) {
+    var ed = existing && existing.id ? existing : null;
+    var host = openModal(
+      '<div class="modal-head"><h3>' + (ed ? 'Edit equipment' : 'New equipment') + '</h3><button class="x" id="mx">&times;</button></div>' +
+      '<div class="field-group"><label>Type</label><div class="seg" id="kindSeg"></div></div>' +
+      '<div class="field-group"><label>Name</label><input id="qName" value="' + esc(ed ? ed.name : '') + '" placeholder="e.g. Massey Ferguson 375"></div>' +
+      '<div class="row2"><div class="field-group"><label>Make / spec (optional)</label><input id="qMake" value="' + esc(ed ? ed.make : '') + '" placeholder="e.g. 75 hp"></div>' +
+      '<div class="field-group"><label>Engine hours (optional)</label><input id="qHours" type="number" inputmode="numeric" value="' + (ed && ed.hours ? ed.hours : '') + '" placeholder="0"></div></div>' +
+      '<div class="row2"><div class="field-group"><label>Last serviced</label><input id="qLast" type="date" value="' + (ed ? (ed.lastServiceISO || addDays(0)) : addDays(0)) + '"></div>' +
+      '<div class="field-group"><label>Service every</label><select id="qInt">' + INTERVALS.map(function (i) { return '<option value="' + i[0] + '"' + (ed && ed.intervalDays === i[0] ? ' selected' : (!ed && i[0] === 90 ? ' selected' : '')) + '>' + i[1] + '</option>'; }).join('') + '</select></div></div>' +
+      '<div class="field-group"><label>Note (optional)</label><input id="qNote" value="' + esc(ed ? ed.note : '') + '" placeholder="e.g. needs new tyre"></div>' +
+      '<button class="btn-primary" id="qSave">' + (ed ? 'Save changes' : 'Add equipment') + '</button>' +
+      (ed ? '<button class="btn-danger" id="qDel">Delete equipment</button>' : ''));
+    var kind = ed ? ed.kind : 'tractor';
+    var seg = $('#kindSeg', host);
+    Object.keys(EQUIP_KINDS).forEach(function (key) {
+      var b = el('<button' + (key === kind ? ' class="on"' : '') + '>' + EQUIP_KINDS[key].e + ' ' + EQUIP_KINDS[key].label + '</button>');
+      b.addEventListener('click', function () { kind = key; seg.querySelectorAll('button').forEach(function (x) { x.classList.remove('on'); }); b.classList.add('on'); });
+      seg.appendChild(b);
+    });
+    $('#mx', host).onclick = closeModal;
+    $('#qSave', host).onclick = function () {
+      var name = $('#qName', host).value.trim();
+      if (!name) { toast('Give the equipment a name'); return; }
+      var make = $('#qMake', host).value.trim();
+      var hours = parseInt($('#qHours', host).value, 10) || 0;
+      var last = $('#qLast', host).value || addDays(0);
+      var intv = parseInt($('#qInt', host).value, 10) || 90;
+      var note = $('#qNote', host).value.trim();
+      if (ed) { ed.kind = kind; ed.name = name; ed.make = make; ed.hours = hours; ed.lastServiceISO = last; ed.intervalDays = intv; ed.note = note; }
+      else { DB.equipment.push({ id: f(), kind: kind, name: name, make: make, hours: hours, lastServiceISO: last, intervalDays: intv, note: note, logs: [] }); }
+      save(); closeModal(); render(); toast(ed ? 'Equipment updated' : 'Equipment added');
+    };
+    if (ed) $('#qDel', host).onclick = function () {
+      DB.equipment = DB.equipment.filter(function (x) { return x.id !== ed.id; });
+      save(); closeModal(); render(); toast('Equipment deleted');
+    };
+  }
+
+  function openServiceForm(eq) {
+    var host = openModal(
+      '<div class="modal-head"><h3>Log service · ' + esc(eq.name) + '</h3><button class="x" id="mx">&times;</button></div>' +
+      '<div class="field-group"><label>Type</label><select id="sType">' + SERVICE_TYPES.map(function (t) { return '<option>' + t + '</option>'; }).join('') + '</select></div>' +
+      '<div class="row2"><div class="field-group"><label>Date</label><input id="sDate" type="date" value="' + addDays(0) + '"></div>' +
+      '<div class="field-group"><label>Cost (' + curSym() + ', optional)</label><input id="sCost" type="number" inputmode="decimal" placeholder="0"></div></div>' +
+      '<div class="field-group"><label>Engine hours now (optional)</label><input id="sHours" type="number" inputmode="numeric" value="' + (eq.hours || '') + '"></div>' +
+      '<div class="field-group"><label>Note (optional)</label><input id="sNote" placeholder="e.g. oil + filters, greased"></div>' +
+      '<label class="chk"><input type="checkbox" id="sReset" checked> Reset service schedule from this date</label>' +
+      '<button class="btn-primary" id="sSave">Log it</button>');
+    $('#mx', host).onclick = closeModal;
+    $('#sSave', host).onclick = function () {
+      var type = $('#sType', host).value;
+      var date = $('#sDate', host).value || addDays(0);
+      var cost = parseFloat($('#sCost', host).value) || 0;
+      var hours = parseInt($('#sHours', host).value, 10);
+      var note = $('#sNote', host).value.trim();
+      eq.logs = eq.logs || [];
+      eq.logs.push({ id: f(), dateISO: date, type: type, cost: cost, note: note });
+      if (!isNaN(hours) && hours > 0) eq.hours = hours;
+      if ($('#sReset', host).checked) eq.lastServiceISO = date;
+      if (cost > 0) DB.expenses.push({ id: f(), fieldId: null, category: 'Maintenance', amount: cost, dateISO: date, note: eq.name + ' — ' + type });
+      save(); closeModal(); render();
+      toast(cost > 0 ? 'Service logged — ' + money(cost) + ' to expenses' : 'Service logged');
+    };
+  }
+
+  function openServiceHistory(eq) {
+    var logs = (eq.logs || []).slice().sort(function (a, b) { return a.dateISO < b.dateISO ? 1 : -1; });
+    var rows = logs.map(function (l) {
+      return '<div class="hist-row"><div><b>' + esc(l.type) + '</b><span>' + fmtDate(l.dateISO) + (l.note ? ' · ' + esc(l.note) : '') + '</span></div>' + (l.cost > 0 ? '<span class="hist-cost">' + money(l.cost) + '</span>' : '') + '</div>';
+    }).join('');
+    openModal(
+      '<div class="modal-head"><h3>Service log · ' + esc(eq.name) + '</h3><button class="x" id="mx">&times;</button></div>' +
+      '<div class="hist">' + (rows || '<p style="color:var(--muted);font-size:13px">No entries yet.</p>') + '</div>' +
+      '<button class="btn-soft" id="hClose">Close</button>');
+    var host = $('#modalHost');
+    $('#mx', host).onclick = closeModal;
+    $('#hClose', host).onclick = closeModal;
+  }
+
+  /* ===================================================================
      RECORDS / PRO / CONSENT / EXPORT / MARKETPLACE
      =================================================================== */
   function normalizeDB() {
     if (!DB) return;
     DB.settings = DB.settings || {};
     if (!DB.yields) DB.yields = [];
+    if (!DB.equipment) DB.equipment = [];
     if (!DB.settings.plan) DB.settings.plan = 'free';
     if (!DB.settings.country) DB.settings.country = detectCountry();
   }
@@ -1005,8 +1166,9 @@
     v.appendChild(row('📊', 'Lender summary', '', function () { requirePro(function () { go('lender'); }); }, isPro() ? '' : 'Pro'));
     v.appendChild(row('📤', 'Export records', '', openExportSheet));
 
-    // Marketplace
-    sec('Marketplace');
+    // Reference & marketplace
+    sec('Reference');
+    v.appendChild(row('🐛', 'Pest & disease library', '', function () { go('pests'); }));
     v.appendChild(row('🛒', 'Input suppliers', '', function () { go('suppliers'); }));
 
     // Settings
@@ -1120,7 +1282,7 @@
     save(); render(); toast(t.cost > 0 ? 'Done — ' + money(t.cost) + ' logged to expenses' : 'Marked done');
   }
 
-  var EXP_CATS = ['Seed', 'Fertilizer', 'Chemicals', 'Fuel', 'Labour', 'Other'];
+  var EXP_CATS = ['Seed', 'Fertilizer', 'Chemicals', 'Fuel', 'Labour', 'Maintenance', 'Other'];
   function openExpenseForm() {
     var host = openModal(
       '<div class="modal-head"><h3>Log expense</h3><button class="x" id="mx">&times;</button></div>' +
@@ -1144,7 +1306,7 @@
   function render() {
     normalizeDB();
     document.querySelectorAll('.nav-item').forEach(function (b) {
-      var moreish = ['suppliers', 'analytics', 'lender', 'more'].indexOf(state.view) >= 0;
+      var moreish = ['suppliers', 'analytics', 'lender', 'pests', 'more'].indexOf(state.view) >= 0;
       var match = b.dataset.view === state.view || (state.view === 'field' && b.dataset.view === 'fields') || (moreish && b.dataset.view === 'more');
       b.classList.toggle('on', match);
     });
@@ -1156,6 +1318,7 @@
     else if (state.view === 'suppliers') viewSuppliers();
     else if (state.view === 'analytics') viewAnalytics();
     else if (state.view === 'lender') viewLender();
+    else if (state.view === 'equipment') viewEquipment();
     else if (state.view === 'more') viewMore();
     syncInstallBanner();
   }

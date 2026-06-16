@@ -1,5 +1,5 @@
 /* MaintainFlow Ag — service worker (offline-first) */
-var VERSION = 'mfag-v1.1.7';
+var VERSION = 'mfag-v1.1.8';
 var CORE = [
   './',
   './index.html',
@@ -39,8 +39,26 @@ self.addEventListener('fetch', function (e) {
   // served from gstatic.com and is cached by the cross-origin handler below.
   if (/(\.|^)(googleapis\.com|firebaseio\.com|firebaseapp\.com|google\.com|open-meteo\.com)$/.test(url.hostname)) return;
 
-  // App shell & same-origin: cache-first, fall back to network, then cache the response.
   if (url.origin === location.origin) {
+    // App shell (HTML / JS / CSS): network-first so a new deploy shows up on the
+    // next reload when online; fall back to cache (and the shell) when offline.
+    var isShell = req.mode === 'navigate' || req.destination === 'script' || req.destination === 'style' ||
+      url.pathname === '/' || /\.(html|js|css)$/.test(url.pathname);
+    if (isShell) {
+      e.respondWith(
+        fetch(req).then(function (res) {
+          var copy = res.clone();
+          caches.open(VERSION).then(function (c) { c.put(req, copy); }).catch(function () {});
+          return res;
+        }).catch(function () {
+          return caches.match(req).then(function (cached) {
+            return cached || (req.mode === 'navigate' ? caches.match('./index.html') : undefined);
+          });
+        })
+      );
+      return;
+    }
+    // Static assets (icons, json, manifest): cache-first, then network.
     e.respondWith(
       caches.match(req).then(function (cached) {
         if (cached) return cached;
@@ -48,9 +66,6 @@ self.addEventListener('fetch', function (e) {
           var copy = res.clone();
           caches.open(VERSION).then(function (c) { c.put(req, copy); }).catch(function () {});
           return res;
-        }).catch(function () {
-          // navigation fallback to app shell when offline
-          if (req.mode === 'navigate') return caches.match('./index.html');
         });
       })
     );

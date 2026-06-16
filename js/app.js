@@ -711,7 +711,7 @@
   }
 
   function startCloudSync(user, onReady) {
-    cloud.on = true; cloud.uid = user.uid; cloud.email = user.email;
+    cloud.on = true; cloud.uid = user.uid; cloud.email = user.email; cloud.phone = user.phoneNumber;
     var cached = load();                 // per-user offline cache (instant, offline-friendly)
     var booted = false;
     function bootOnce(db) { DB = db; if (!booted) { booted = true; onReady(); } else { render(); } }
@@ -766,10 +766,25 @@
       'auth/wrong-password': 'Email or password is incorrect.',
       'auth/user-not-found': 'No account found for that email.',
       'auth/network-request-failed': 'No connection. Check your signal and try again.',
-      'auth/too-many-requests': 'Too many attempts. Wait a moment and try again.'
+      'auth/too-many-requests': 'Too many attempts. Wait a moment and try again.',
+      'auth/invalid-phone-number': 'That phone number looks invalid — include your country code.',
+      'auth/missing-phone-number': 'Please enter your phone number.',
+      'auth/invalid-verification-code': 'That code is incorrect. Check the SMS and try again.',
+      'auth/code-expired': 'That code has expired — request a new one.',
+      'auth/quota-exceeded': 'SMS limit reached for now. Please try again later.',
+      'auth/operation-not-allowed': 'Phone sign-in isn’t enabled on the server yet.',
+      'auth/billing-not-enabled': 'Phone sign-in needs the Firebase Blaze plan enabled.',
+      'auth/captcha-check-failed': 'Verification failed. Reload the page and try again.'
     };
     return m[code] || fallback || 'Something went wrong. Please try again.';
   }
+  var COUNTRY_CODES = [
+    ['+267', '🇧🇼 Botswana'], ['+27', '🇿🇦 South Africa'], ['+263', '🇿🇼 Zimbabwe'],
+    ['+260', '🇿🇲 Zambia'], ['+264', '🇳🇦 Namibia'], ['+258', '🇲🇿 Mozambique'],
+    ['+265', '🇲🇼 Malawi'], ['+266', '🇱🇸 Lesotho'], ['+268', '🇸🇿 Eswatini'],
+    ['+254', '🇰🇪 Kenya'], ['+255', '🇹🇿 Tanzania'], ['+256', '🇺🇬 Uganda'], ['+234', '🇳🇬 Nigeria']
+  ];
+  function ccOptions() { return COUNTRY_CODES.map(function (c) { return '<option value="' + c[0] + '">' + c[1] + ' (' + c[0] + ')</option>'; }).join(''); }
   function showAuthGate(mode) { var g = $('#authGate'); if (g) { g.hidden = false; renderAuth(mode || 'signin'); } }
   function hideAuthGate() { var g = $('#authGate'); if (g) { g.hidden = true; g.innerHTML = ''; } }
   function guestChosen() { try { return localStorage.getItem('mfag.guest') === '1'; } catch (e) { return false; } }
@@ -795,6 +810,7 @@
         '<label>Password</label><input id="agPass" type="password" autocomplete="new-password" placeholder="At least 6 characters">' +
         '<div class="ag-msg" id="agMsg" hidden></div>' +
         '<button class="ag-btn" id="agGo">Create account</button>' +
+        '<div class="ag-alt">No email? <button class="ag-link" id="agToPhone">Use your phone number</button></div>' +
         '<div class="ag-alt">Already have an account? <button class="ag-link" id="agToSignin">Sign in</button></div>' +
         '<button class="ag-guest" id="agGuest">Continue without an account</button>';
     } else if (mode === 'reset') {
@@ -803,6 +819,22 @@
         '<div class="ag-msg" id="agMsg" hidden></div>' +
         '<button class="ag-btn" id="agGo">Send reset link</button>' +
         '<div class="ag-alt"><button class="ag-link" id="agToSignin">Back to sign in</button></div>';
+    } else if (mode === 'phone') {
+      card = '<h2>Sign in with phone</h2><p class="ag-sub">We’ll text you a one-time code. Standard SMS rates may apply.</p>' +
+        '<label>Farm name <span class="ag-opt">(new accounts)</span></label><input id="agFarm" type="text" placeholder="e.g. Kgosi’s Farm">' +
+        '<label>Phone number</label><div class="ag-phone"><select id="agCC">' + ccOptions() + '</select><input id="agPhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="71 234 567"></div>' +
+        '<div class="ag-msg" id="agMsg" hidden></div>' +
+        '<button class="ag-btn" id="agGo">Send code</button>' +
+        '<div id="agRecaptcha"></div>' +
+        '<div class="ag-alt"><button class="ag-link" id="agToSignin">Use email instead</button></div>' +
+        '<button class="ag-guest" id="agGuest">Continue without an account</button>';
+    } else if (mode === 'phonecode') {
+      card = '<h2>Enter the code</h2><p class="ag-sub">Sent by SMS to ' + esc(cloud.phoneNumber || 'your phone') + '.</p>' +
+        '<label>6-digit code</label><input id="agCode" type="tel" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456">' +
+        '<div class="ag-msg" id="agMsg" hidden></div>' +
+        '<button class="ag-btn" id="agGo">Verify &amp; sign in</button>' +
+        '<div id="agRecaptcha"></div>' +
+        '<div class="ag-alt"><button class="ag-link" id="agResend">Resend code</button> · <button class="ag-link" id="agToPhone">Change number</button></div>';
     } else {
       card = '<h2>Welcome back</h2><p class="ag-sub">Sign in to reach your farm from any device.</p>' +
         '<label>Email</label><input id="agEmail" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com">' +
@@ -810,21 +842,62 @@
         '<div class="ag-msg" id="agMsg" hidden></div>' +
         '<button class="ag-btn" id="agGo">Sign in</button>' +
         '<div class="ag-alt"><button class="ag-link" id="agToReset">Forgot password?</button></div>' +
+        '<div class="ag-alt">No email? <button class="ag-link" id="agToPhone">Use your phone number</button></div>' +
         '<div class="ag-alt">New here? <button class="ag-link" id="agToSignup">Create an account</button></div>' +
         '<button class="ag-guest" id="agGuest">Continue without an account</button>';
     }
     g.innerHTML = '<div class="ag-wrap">' + head + '<div class="ag-card">' + card + '</div><div class="ag-foot">Works offline after your first sign-in.</div></div>';
     var msg = $('#agMsg', g);
     function showErr(t) { msg.textContent = t; msg.hidden = false; }
-    function busy(b) { var go = $('#agGo', g); go.disabled = b; go.textContent = b ? 'Please wait…' : (mode === 'signup' ? 'Create account' : mode === 'reset' ? 'Send reset link' : 'Sign in'); }
+    function busy(b) {
+      var go = $('#agGo', g); if (!go) return; go.disabled = b;
+      var labels = { signup: 'Create account', reset: 'Send reset link', phone: 'Send code', phonecode: 'Verify & sign in' };
+      go.innerHTML = b ? 'Please wait…' : (labels[mode] || 'Sign in');
+    }
     var toSignin = $('#agToSignin', g); if (toSignin) toSignin.onclick = function () { renderAuth('signin'); };
     var toSignup = $('#agToSignup', g); if (toSignup) toSignup.onclick = function () { renderAuth('signup'); };
     var toReset = $('#agToReset', g); if (toReset) toReset.onclick = function () { renderAuth('reset'); };
+    var toPhone = $('#agToPhone', g); if (toPhone) toPhone.onclick = function () { renderAuth('phone'); };
+    var resend = $('#agResend', g); if (resend) resend.onclick = function () { msg.hidden = true; sendPhoneCode(); };
     var guestBtn = $('#agGuest', g); if (guestBtn) guestBtn.onclick = continueAsGuest;
+
+    function newVerifier() {
+      try { if (cloud.recaptcha) cloud.recaptcha.clear(); } catch (e) {}
+      cloud.recaptcha = new firebase.auth.RecaptchaVerifier('agRecaptcha', { size: 'invisible' });
+      return cloud.recaptcha;
+    }
+    function sendPhoneCode() {
+      if (!cloud.auth) return showErr('Still connecting — try again in a moment.');
+      if ($('#agPhone', g)) {
+        var cc = $('#agCC', g).value;
+        var nat = ($('#agPhone', g).value || '').replace(/\D/g, '').replace(/^0+/, '');
+        if (!nat) return showErr('Please enter your phone number.');
+        cloud.phoneNumber = cc + nat;
+        cloud.pendingFarm = ($('#agFarm', g).value || '').trim();
+      }
+      if (!cloud.phoneNumber) return renderAuth('phone');
+      busy(true);
+      var verifier;
+      try { verifier = newVerifier(); } catch (e) { busy(false); return showErr('Verification could not start. Reload and try again.'); }
+      cloud.auth.signInWithPhoneNumber(cloud.phoneNumber, verifier)
+        .then(function (cr) { cloud.phoneConfirm = cr; busy(false); renderAuth('phonecode'); })
+        .catch(function (e) { busy(false); try { cloud.recaptcha.clear(); } catch (x) {} showErr(authMsg(e.code)); });
+    }
+    function verifyPhoneCode() {
+      if (!cloud.phoneConfirm) return renderAuth('phone');
+      var code = ($('#agCode', g).value || '').replace(/\D/g, '');
+      if (code.length < 6) return showErr('Enter the 6-digit code from the SMS.');
+      busy(true);
+      cloud.phoneConfirm.confirm(code).catch(function (e) { busy(false); showErr(authMsg(e.code)); });
+      // success → onAuthStateChanged boots the app
+    }
+
     $('#agGo', g).onclick = function () {
+      msg.hidden = true;
+      if (mode === 'phone') return sendPhoneCode();
+      if (mode === 'phonecode') return verifyPhoneCode();
       if (!cloud.auth) return showErr('Still connecting — try again in a moment.');
       var email = ($('#agEmail', g).value || '').trim();
-      msg.hidden = true;
       if (mode === 'reset') {
         if (!email) return showErr('Please enter your email.');
         busy(true);
@@ -849,7 +922,7 @@
   function openAccountSheet() {
     var host = openModal(
       '<div class="modal-head"><h3>Account</h3><button class="x" id="mx">&times;</button></div>' +
-      '<div class="acct-row"><span class="acct-ic">' + LEAF + '</span><div class="acct-meta"><b>' + esc(cloud.email || 'Signed in') + '</b><span>' + (navigator.onLine ? 'Synced to your cloud account' : 'Offline — will sync when back online') + '</span></div></div>' +
+      '<div class="acct-row"><span class="acct-ic">' + LEAF + '</span><div class="acct-meta"><b>' + esc(cloud.email || cloud.phone || 'Signed in') + '</b><span>' + (navigator.onLine ? 'Synced to your cloud account' : 'Offline — will sync when back online') + '</span></div></div>' +
       '<button class="btn-danger" id="acctOut">Sign out</button>');
     $('#mx', host).onclick = closeModal;
     $('#acctOut', host).onclick = function () { closeModal(); cloudSignOut(); toast('Signed out'); };

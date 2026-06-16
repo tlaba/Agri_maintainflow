@@ -555,10 +555,14 @@
     // data & plan
     v.appendChild(el('<div class="sec-h" style="margin-top:18px"><h3>Records &amp; plan</h3>' + (isPro() ? '<span class="link pro-badge">PRO</span>' : '') + '</div>'));
     var links = el('<div class="acct-links acct-links-block">' +
+      '<button class="acct-link" id="mYa">Yield analytics' + (isPro() ? '' : ' · Pro') + '</button>' +
+      '<button class="acct-link" id="mLs">Lender summary' + (isPro() ? '' : ' · Pro') + '</button>' +
       '<button class="acct-link" id="mExport">Export records (CSV / PDF)</button>' +
       '<button class="acct-link" id="mPro">' + (isPro() ? 'Manage Pro' : 'Upgrade to Pro') + '</button>' +
       '<button class="acct-link" id="mPriv">Privacy</button></div>');
     v.appendChild(links);
+    $('#mYa', links).onclick = function () { requirePro(function () { go('analytics'); }); };
+    $('#mLs', links).onclick = function () { requirePro(function () { go('lender'); }); };
     $('#mExport', links).onclick = openExportSheet;
     $('#mPro', links).onclick = openUpgradeSheet;
     $('#mPriv', links).onclick = openPrivacy;
@@ -681,12 +685,16 @@
     var fields = DB.fields.map(function (fl) { return '<tr><td>' + esc(fl.tag) + '</td><td>' + cropOf(fl.crop).label + ' · ' + esc(fl.variety) + '</td><td>' + fl.sizeHa + ' ha</td><td>' + fmtDate(fl.plantedISO) + '</td></tr>'; });
     var harvests = DB.yields.map(function (y) { var fl = fieldById(y.fieldId); return '<tr><td>' + (fl ? esc(fl.tag) : '') + '</td><td>' + cropOf(y.crop).label + '</td><td>' + fmtDate(y.harvestISO) + '</td><td>' + y.totalKg.toLocaleString('en-US') + ' kg</td><td>' + yieldPerHa(y, fl) + ' kg/ha</td></tr>'; });
     var totalSp = totalSpend();
+    var cs = creditSummary();
+    var facRows = cs.factors.map(function (f) { return '<tr><td>' + f[0] + '</td><td>' + f[1] + ' / ' + f[2] + '</td><td>' + esc(f[3]) + '</td></tr>'; }).join('');
     var html = '<!doctype html><html><head><meta charset="utf-8"><title>Farm records</title><style>' +
       'body{font-family:Arial,Helvetica,sans-serif;color:#13202b;margin:28px}h1{font-size:20px;margin:0 0 2px}h2{font-size:14px;margin:22px 0 8px;color:#1B5E20}' +
       '.sub{color:#5e7080;font-size:12px}table{width:100%;border-collapse:collapse;font-size:12px}th,td{text-align:left;padding:7px 8px;border-bottom:1px solid #e7e3d8}th{color:#5e7080;text-transform:uppercase;font-size:10px;letter-spacing:.04em}' +
-      '.tot{margin-top:8px;font-size:13px}</style></head><body>' +
+      '.tot{margin-top:8px;font-size:13px}.score{display:flex;align-items:center;gap:14px;margin:10px 0 4px}.score .n{font-size:34px;font-weight:bold;color:#1B5E20}.score .b{font-size:13px;color:#5e7080}</style></head><body>' +
       '<h1>' + esc(DB.settings.farmName || 'Farm') + ' — records</h1>' +
       '<div class="sub">Generated ' + fmtDate(addDays(0)) + ' · MaintainFlow Ag</div>' +
+      '<h2>Credit-readiness summary</h2><div class="score"><div class="n">' + cs.score + '/100</div><div class="b"><b>' + cs.band + '</b><br>' + cs.totalHa.toFixed(1) + ' ha · ' + cs.crops + ' crops · ' + cs.seasons + ' season(s) of records</div></div>' +
+      '<table><tr><th>Factor</th><th>Score</th><th>Basis</th></tr>' + facRows + '</table>' +
       '<h2>Fields</h2><table><tr><th>Tag</th><th>Crop</th><th>Size</th><th>Planted</th></tr>' + rowsHtml(fields) + '</table>' +
       '<h2>Harvests</h2>' + (harvests.length ? '<table><tr><th>Field</th><th>Crop</th><th>Date</th><th>Yield</th><th>Per ha</th></tr>' + rowsHtml(harvests) + '</table>' : '<div class="sub">No harvests recorded.</div>') +
       '<h2>Costs</h2><div class="tot">Total spend to date: <b>' + money(totalSp) + '</b> across ' + DB.fields.length + ' fields.</div>' +
@@ -705,13 +713,36 @@
     $('#exPdf', host).onclick = function () { closeModal(); requirePro(printReport); };
   }
 
-  /* ---- INPUT SUPPLIER MARKETPLACE ---- */
-  var SUPPLIERS = [
-    { e: '🌽', name: 'AgriSeed Botswana', cat: 'Seed', loc: 'Gaborone', items: 'Maize (SC Duma 43), soybean, sorghum & sunflower seed' },
-    { e: '🧪', name: 'GrowChem Supplies', cat: 'Fertilizer & chemicals', loc: 'Francistown', items: 'Compound D, LAN, urea, herbicides & fungicides' },
-    { e: '🚜', name: 'FarmMech Hire', cat: 'Mechanisation', loc: 'Lobatse', items: 'Tractor, planter & sprayer hire; land preparation' },
-    { e: '💧', name: 'Kalahari Irrigation', cat: 'Irrigation', loc: 'Gaborone', items: 'Drip kits, pumps, piping & boreholes' }
+  /* ---- INPUT SUPPLIER MARKETPLACE (hosted JSON + offline fallback) ---- */
+  var SUPPLIERS_FALLBACK = [
+    { e: '🌽', name: 'AgriSeed Botswana', cat: 'Seed', loc: 'Gaborone', items: 'Maize, soybean, sorghum & sunflower seed', tel: '+2673190000', whatsapp: '2673190000' },
+    { e: '🧪', name: 'GrowChem Supplies', cat: 'Fertilizer & chemicals', loc: 'Francistown', items: 'Compound D, LAN, urea, herbicides & fungicides', tel: '+2672410000', whatsapp: '2672410000' },
+    { e: '🚜', name: 'FarmMech Hire', cat: 'Mechanisation', loc: 'Lobatse', items: 'Tractor, planter & sprayer hire; land prep', tel: '+2675330000', whatsapp: '2675330000' },
+    { e: '💧', name: 'Kalahari Irrigation', cat: 'Irrigation', loc: 'Gaborone', items: 'Drip kits, pumps, piping & boreholes', tel: '+2673950000', whatsapp: '2673950000' }
   ];
+  var SUP_KEY = 'mfag.suppliers';
+  var suppliersData = null;
+  function loadSuppliers(cb) {
+    if (!suppliersData) { try { var c = JSON.parse(localStorage.getItem(SUP_KEY) || 'null'); if (c && c.length) suppliersData = c; } catch (e) {} }
+    if (window.fetch) {
+      fetch('suppliers.json', { cache: 'no-cache' }).then(function (r) { return r.json(); }).then(function (j) {
+        var list = (j && j.suppliers) || (Array.isArray(j) ? j : null);
+        if (!list || !list.length) return;
+        var s = JSON.stringify(list);
+        if (s === JSON.stringify(suppliersData)) return;     // unchanged → no re-render
+        suppliersData = list;
+        try { localStorage.setItem(SUP_KEY, s); } catch (e) {}
+        if (state.view === 'suppliers') render();
+      }).catch(function () {});
+    }
+    if (cb) cb();
+  }
+  function contactSupplier(s) {
+    var num = (s.whatsapp || '').replace(/\D/g, '');
+    if (num) { window.open('https://wa.me/' + num + '?text=' + encodeURIComponent('Hello ' + s.name + ', I’m a MaintainFlow Ag farmer and would like a quote.'), '_blank', 'noopener'); return; }
+    if (s.tel) { window.location.href = 'tel:' + s.tel; return; }
+    toast('No contact on file for ' + s.name);
+  }
   function viewSuppliers() {
     $('#topbar').innerHTML =
       '<div class="tb-back"><button class="bk" id="backBtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg></button>' +
@@ -719,15 +750,106 @@
       '<div class="tb-title"><div class="t">Input suppliers</div><div class="row">Seed, fertilizer, chemicals &amp; services</div></div>';
     $('#backBtn').addEventListener('click', function () { go('fields'); });
     wireSyncPill(); updateSyncPill();
+    loadSuppliers();
+    var list = suppliersData && suppliersData.length ? suppliersData : SUPPLIERS_FALLBACK;
     var v = $('#view'); v.innerHTML = '';
-    v.appendChild(el('<p class="hint">Sample directory. Requesting a quote is a Pro feature.</p>'));
-    SUPPLIERS.forEach(function (s) {
-      var row = el('<div class="supplier"><span class="sic">' + s.e + '</span>' +
-        '<div class="sm"><div class="snm">' + esc(s.name) + '</div><div class="scat">' + esc(s.cat) + ' · ' + esc(s.loc) + '</div><div class="sit">' + esc(s.items) + '</div></div>' +
+    v.appendChild(el('<p class="hint">' + (isPro() ? 'Tap Quote to message a supplier on WhatsApp.' : 'Requesting a quote is a Pro feature.') + '</p>'));
+    list.forEach(function (s) {
+      var row = el('<div class="supplier"><span class="sic">' + (s.e || '🏬') + '</span>' +
+        '<div class="sm"><div class="snm">' + esc(s.name) + '</div><div class="scat">' + esc(s.cat || '') + (s.loc ? ' · ' + esc(s.loc) : '') + '</div><div class="sit">' + esc(s.items || '') + '</div></div>' +
         '<button class="s-contact">Quote</button></div>');
-      $('.s-contact', row).addEventListener('click', function () { requirePro(function () { toast('Quote request sent to ' + s.name); }); });
+      $('.s-contact', row).addEventListener('click', function () { requirePro(function () { contactSupplier(s); }); });
       v.appendChild(row);
     });
+    hideFab();
+  }
+
+  /* ---- YIELD ANALYTICS + LENDER SUMMARY (Pro) ---- */
+  var YIELD_BENCH = { maize: 2200, sorghum: 1100, millet: 800, wheat: 2500, rice: 3000, soybean: 1500, beans: 1100, groundnut: 1100, cowpea: 900, sunflower: 1400, cotton: 1200, tobacco: 1800, cassava: 12000, sweetpotato: 9000, potato: 15000, tomato: 25000, cabbage: 30000, onion: 20000, pumpkin: 12000, vegetables: 20000, other: 1500 };
+  function benchFor(crop) { return YIELD_BENCH[crop] || 1500; }
+  function seasonOf(iso) { return (iso || '').slice(0, 4); }
+  function backTopbar(title, sub) {
+    $('#topbar').innerHTML =
+      '<div class="tb-back"><button class="bk" id="backBtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg></button>' +
+      '<button class="offline" id="syncPill" type="button" style="margin-left:auto"><span class="dot"></span><span id="syncText">Offline-ready</span></button></div>' +
+      '<div class="tb-title"><div class="t">' + esc(title) + '</div><div class="row">' + esc(sub) + '</div></div>';
+    $('#backBtn').addEventListener('click', function () { go('fields'); });
+    wireSyncPill(); updateSyncPill();
+  }
+  function yieldAnalytics() {
+    var byCrop = {};
+    DB.yields.forEach(function (y) {
+      var fl = fieldById(y.fieldId);
+      var crop = y.crop || (fl && fl.crop) || 'other';
+      var yr = seasonOf(y.harvestISO) || '—';
+      byCrop[crop] = byCrop[crop] || {};
+      var s = byCrop[crop][yr] = byCrop[crop][yr] || { totalKg: 0, ha: 0 };
+      s.totalKg += (+y.totalKg || 0); s.ha += (+y.areaHa || (fl && fl.sizeHa) || 0);
+    });
+    return Object.keys(byCrop).map(function (crop) {
+      var seasons = Object.keys(byCrop[crop]).sort().map(function (yr) {
+        var s = byCrop[crop][yr]; return { year: yr, totalKg: s.totalKg, ha: s.ha, perHa: s.ha ? Math.round(s.totalKg / s.ha) : 0 };
+      });
+      var avg = Math.round(seasons.reduce(function (a, s) { return a + s.perHa; }, 0) / seasons.length);
+      var trend = seasons.length > 1 ? seasons[seasons.length - 1].perHa - seasons[0].perHa : 0;
+      return { crop: crop, label: cropOf(crop).label, e: cropOf(crop).e, seasons: seasons, avgPerHa: avg, trend: trend, bench: benchFor(crop) };
+    });
+  }
+  function viewAnalytics() {
+    backTopbar('Yield analytics', 'Trends across your seasons');
+    var v = $('#view'); v.innerHTML = '';
+    var data = yieldAnalytics();
+    if (!data.length) { v.appendChild(emptyState('No harvests yet', 'Log harvests on your fields to see season-by-season yield trends.')); hideFab(); return; }
+    data.forEach(function (c) {
+      var maxv = Math.max(c.bench, c.seasons.reduce(function (m, s) { return Math.max(m, s.perHa); }, 0)) || 1;
+      var bars = c.seasons.map(function (s) {
+        var pct = Math.max(4, Math.round(s.perHa / maxv * 100));
+        return '<div class="abar"><span class="abar-v">' + s.perHa.toLocaleString('en-US') + '</span><div class="abar-fill" style="height:' + pct + '%"></div><span class="abar-y">' + s.year + '</span></div>';
+      }).join('');
+      var trendTxt = c.seasons.length < 2 ? '1 season' : (c.trend > 0 ? '▲ improving' : (c.trend < 0 ? '▼ declining' : 'steady'));
+      v.appendChild(el('<div class="an-card"><div class="an-head"><span class="an-ic">' + c.e + '</span><div class="an-meta"><b>' + c.label + '</b><span>avg ' + c.avgPerHa.toLocaleString('en-US') + ' kg/ha · ' + trendTxt + '</span></div></div>' +
+        '<div class="an-chart"><div class="bench-line" style="bottom:' + Math.round(c.bench / maxv * 100) + '%"></div>' + bars + '</div>' +
+        '<div class="an-foot">dashed line = benchmark ~' + c.bench.toLocaleString('en-US') + ' kg/ha</div></div>'));
+    });
+    hideFab();
+  }
+  function uniqueCropCount() { var s = {}; DB.fields.forEach(function (f) { s[f.crop] = 1; }); return Object.keys(s).length; }
+  function creditSummary() {
+    var seasonsSet = {}; DB.yields.forEach(function (y) { seasonsSet[seasonOf(y.harvestISO)] = 1; });
+    var seasons = Object.keys(seasonsSet).length;
+    var fHistory = seasons >= 3 ? 30 : seasons === 2 ? 22 : seasons === 1 ? 12 : 0;
+    var fComplete = (DB.fields.length ? 5 : 0) + (DB.expenses.length ? 8 : 0) + (DB.yields.length ? 7 : 0);
+    var ratios = []; DB.yields.forEach(function (y) { var fl = fieldById(y.fieldId); var ha = +(y.areaHa || (fl && fl.sizeHa) || 0); if (ha) ratios.push((y.totalKg / ha) / benchFor(y.crop || (fl && fl.crop) || 'other')); });
+    var avgRatio = ratios.length ? ratios.reduce(function (a, b) { return a + b; }, 0) / ratios.length : 0;
+    var fYield = Math.round(Math.max(0, Math.min(1, avgRatio)) * 30);
+    var done = DB.tasks.filter(function (t) { return t.completed; }).length, total = DB.tasks.length;
+    var fTask = total ? Math.round(done / total * 20) : 0;
+    var score = Math.min(100, fHistory + fComplete + fYield + fTask);
+    var band = score >= 80 ? 'Strong' : score >= 60 ? 'Good' : score >= 40 ? 'Building' : 'Early-stage';
+    return {
+      score: score, band: band, seasons: seasons, totalHa: totalHa(), crops: uniqueCropCount(), spend: totalSpend(),
+      factors: [
+        ['Records history', fHistory, 30, seasons + ' season' + (seasons === 1 ? '' : 's') + ' of harvests'],
+        ['Data completeness', fComplete, 20, 'fields, costs & yields logged'],
+        ['Yield performance', fYield, 30, avgRatio ? Math.round(avgRatio * 100) + '% of benchmark yield' : 'no yield data yet'],
+        ['Task discipline', fTask, 20, total ? Math.round(done / total * 100) + '% of work orders done' : 'no work orders yet']
+      ]
+    };
+  }
+  function viewLender() {
+    backTopbar('Lender summary', 'Credit-readiness from your records');
+    var v = $('#view'); v.innerHTML = '';
+    var c = creditSummary();
+    v.appendChild(el('<div class="score-card"><div class="score-ring" style="background:conic-gradient(var(--green) ' + (c.score * 3.6) + 'deg,var(--hair) 0)"><div class="score-num">' + c.score + '</div></div><div class="score-meta"><b>' + c.band + '</b><span>Farm credit-readiness score</span></div></div>'));
+    v.appendChild(el('<div class="kpis"><div class="kpi"><div class="v">' + c.totalHa.toFixed(1) + '</div><div class="l">Hectares</div></div><div class="kpi"><div class="v">' + c.seasons + '</div><div class="l">Seasons</div></div><div class="kpi"><div class="v sm">' + money(c.spend) + '</div><div class="l">Tracked spend</div></div></div>'));
+    v.appendChild(el('<div class="sec-h"><h3>What lenders look at</h3></div>'));
+    c.factors.forEach(function (f) {
+      var pct = Math.round(f[1] / f[2] * 100);
+      v.appendChild(el('<div class="factor"><div class="factor-top"><span>' + f[0] + '</span><b>' + f[1] + '/' + f[2] + '</b></div><div class="factor-bar"><i style="width:' + pct + '%"></i></div><div class="factor-sub">' + esc(f[3]) + '</div></div>'));
+    });
+    v.appendChild(el('<p class="hint" style="margin-top:14px">Generated from your own records to help you approach lenders, cooperatives and insurers. Keep logging harvests and costs to strengthen it.</p>'));
+    var exp = el('<button class="btn-primary" id="lenderPdf">Export PDF report</button>'); v.appendChild(exp);
+    exp.onclick = function () { requirePro(printReport); };
     hideFab();
   }
 
@@ -852,7 +974,8 @@
   function render() {
     normalizeDB();
     document.querySelectorAll('.nav-item').forEach(function (b) {
-      var match = b.dataset.view === state.view || (state.view === 'field' && b.dataset.view === 'fields') || (state.view === 'suppliers' && b.dataset.view === 'money');
+      var moneyish = ['suppliers', 'analytics', 'lender'].indexOf(state.view) >= 0;
+      var match = b.dataset.view === state.view || (state.view === 'field' && b.dataset.view === 'fields') || (moneyish && b.dataset.view === 'money');
       b.classList.toggle('on', match);
     });
     if (state.view === 'fields') viewFields();
@@ -861,6 +984,8 @@
     else if (state.view === 'money') viewMoney();
     else if (state.view === 'pests') viewPests();
     else if (state.view === 'suppliers') viewSuppliers();
+    else if (state.view === 'analytics') viewAnalytics();
+    else if (state.view === 'lender') viewLender();
     syncInstallBanner();
   }
   // global "Tasks" tab = all open work orders across fields

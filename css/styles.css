@@ -190,6 +190,13 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;color:inhe
 .install-card .t span{font-size:11.5px;color:#9bb6c4;display:block;margin-top:2px;line-height:1.4}
 .install-card button{margin-left:auto;background:var(--teal);color:#fff;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:12.5px;padding:9px 14px;border-radius:11px;flex:0 0 auto}
 
+/* sign-in / back-up prompt (green) */
+.signin-card{background:linear-gradient(135deg,var(--green),var(--green-deep));color:#fff;border-radius:16px;padding:16px;margin-bottom:16px;display:flex;gap:13px;align-items:center}
+.signin-card .ic2{width:42px;height:42px;border-radius:12px;background:rgba(255,255,255,.18);display:grid;place-items:center;flex:0 0 42px}
+.signin-card .t b{font-family:'Space Grotesk',sans-serif;font-size:14px;display:block}
+.signin-card .t span{font-size:11.5px;color:#dff0e0;display:block;margin-top:2px;line-height:1.4}
+.signin-card button{margin-left:auto;background:#fff;color:var(--green-deep);font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:12.5px;padding:9px 14px;border-radius:11px;flex:0 0 auto}
+
 /* iOS sheet */
 .ios-sheet{position:fixed;inset:0;background:rgba(15,42,63,.55);z-index:50;display:flex;align-items:flex-end;justify-content:center;animation:fade .25s both}
 @keyframes fade{from{opacity:0}to{opacity:1}}
@@ -219,6 +226,9 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;color:inhe
 .btn-primary{width:100%;background:var(--green);color:#fff;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:15px;padding:15px;border-radius:13px;margin-top:6px}
 .btn-primary:active{transform:scale(.99)}
 .btn-danger{width:100%;background:#fff;color:var(--clay);border:1px solid rgba(196,84,58,.3);font-weight:600;font-size:13px;padding:12px;border-radius:12px;margin-top:10px}
+.btn-soft{width:100%;background:var(--sand);color:var(--navy);border:1px solid var(--hair);font-weight:600;font-size:13px;padding:12px;border-radius:12px;margin-top:10px}
+.acct-del{display:block;width:100%;text-align:center;color:var(--clay);font-weight:600;font-size:12.5px;padding:12px;margin-top:6px}
+.modal-note{font-size:13px;color:var(--muted);line-height:1.5;margin:2px 0 14px}
 
 /* account sheet row */
 .acct-row{display:flex;align-items:center;gap:12px;background:var(--green-soft);border-radius:13px;padding:13px;margin-bottom:4px}

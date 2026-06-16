@@ -595,6 +595,7 @@
     var p = $('#syncPill'); if (!p) return;
     p.onclick = function () {
       if (cloud.on) return openAccountSheet();
+      if (cloudConfigured()) return promptSignIn();
       toast(navigator.onLine ? 'All changes saved on this device' : 'Offline — changes saved locally, will be safe');
     };
   }
@@ -771,6 +772,18 @@
   }
   function showAuthGate(mode) { var g = $('#authGate'); if (g) { g.hidden = false; renderAuth(mode || 'signin'); } }
   function hideAuthGate() { var g = $('#authGate'); if (g) { g.hidden = true; g.innerHTML = ''; } }
+  function guestChosen() { try { return localStorage.getItem('mfag.guest') === '1'; } catch (e) { return false; } }
+  function setGuest(v) { try { if (v) localStorage.setItem('mfag.guest', '1'); else localStorage.removeItem('mfag.guest'); } catch (e) {} }
+  function continueAsGuest() { setGuest(true); cloud.on = false; hideAuthGate(); if (!DB || cloud.uid) initLocalDB(); bootUI(); }
+  // From local/guest mode, let the user reach the sign-in screen (loads the SDK on demand).
+  function promptSignIn() {
+    if (cloud.enabled && cloud.auth) { showAuthGate('signin'); return; }
+    toast('Connecting…');
+    loadFirebaseSDK(function (err) {
+      if (err || !(window.firebase && firebase.auth)) { toast('No connection — signing in needs internet.'); return; }
+      startCloud();
+    });
+  }
   function renderAuth(mode) {
     var g = $('#authGate'); if (!g) return;
     var head = '<div class="ag-brand"><span class="ag-logo">' + LEAF + '</span>MaintainFlow <span class="ag-tag">AG</span></div>';
@@ -782,7 +795,8 @@
         '<label>Password</label><input id="agPass" type="password" autocomplete="new-password" placeholder="At least 6 characters">' +
         '<div class="ag-msg" id="agMsg" hidden></div>' +
         '<button class="ag-btn" id="agGo">Create account</button>' +
-        '<div class="ag-alt">Already have an account? <button class="ag-link" id="agToSignin">Sign in</button></div>';
+        '<div class="ag-alt">Already have an account? <button class="ag-link" id="agToSignin">Sign in</button></div>' +
+        '<button class="ag-guest" id="agGuest">Continue without an account</button>';
     } else if (mode === 'reset') {
       card = '<h2>Reset password</h2><p class="ag-sub">We’ll email you a link to set a new password.</p>' +
         '<label>Email</label><input id="agEmail" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com">' +
@@ -796,7 +810,8 @@
         '<div class="ag-msg" id="agMsg" hidden></div>' +
         '<button class="ag-btn" id="agGo">Sign in</button>' +
         '<div class="ag-alt"><button class="ag-link" id="agToReset">Forgot password?</button></div>' +
-        '<div class="ag-alt">New here? <button class="ag-link" id="agToSignup">Create an account</button></div>';
+        '<div class="ag-alt">New here? <button class="ag-link" id="agToSignup">Create an account</button></div>' +
+        '<button class="ag-guest" id="agGuest">Continue without an account</button>';
     }
     g.innerHTML = '<div class="ag-wrap">' + head + '<div class="ag-card">' + card + '</div><div class="ag-foot">Works offline after your first sign-in.</div></div>';
     var msg = $('#agMsg', g);
@@ -805,6 +820,7 @@
     var toSignin = $('#agToSignin', g); if (toSignin) toSignin.onclick = function () { renderAuth('signin'); };
     var toSignup = $('#agToSignup', g); if (toSignup) toSignup.onclick = function () { renderAuth('signup'); };
     var toReset = $('#agToReset', g); if (toReset) toReset.onclick = function () { renderAuth('reset'); };
+    var guestBtn = $('#agGuest', g); if (guestBtn) guestBtn.onclick = continueAsGuest;
     $('#agGo', g).onclick = function () {
       if (!cloud.auth) return showErr('Still connecting — try again in a moment.');
       var email = ($('#agEmail', g).value || '').trim();
@@ -850,7 +866,7 @@
 
   function startCloud() {
     try {
-      firebase.initializeApp(window.MFAG_FIREBASE);
+      if (!firebase.apps || !firebase.apps.length) firebase.initializeApp(window.MFAG_FIREBASE);
       cloud.enabled = true;
       cloud.auth = firebase.auth();
       cloud.db = firebase.firestore();
@@ -858,21 +874,22 @@
       cloud.auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(function () {});
       cloud.auth.onAuthStateChanged(function (user) {
         if (user) {
+          setGuest(false);          // they have an account now
           hideAuthGate();
           startCloudSync(user, bootUI);
         } else {
           cloudSignOut();
-          DB = seed();              // harmless placeholder so the (hidden) app never refs null
+          if (!DB) DB = seed();     // harmless placeholder so the (hidden) app never refs null
           showAuthGate('signin');
         }
       });
     } catch (e) {
-      cloud.enabled = false; initLocalDB(); bootUI();
+      cloud.enabled = false; if (!DB) initLocalDB(); bootUI();
     }
   }
 
   /* ---------------- boot ---------------- */
-  if (cloudConfigured()) {
+  if (cloudConfigured() && !guestChosen()) {
     showAuthGate('signin');           // show branded gate immediately while the SDK loads
     loadFirebaseSDK(function (err) {
       if (err || !(window.firebase && firebase.auth)) {
@@ -883,6 +900,7 @@
       startCloud();
     });
   } else {
+    // Local mode, or a returning guest (cloud available but they opted out).
     initLocalDB();
     bootUI();
   }

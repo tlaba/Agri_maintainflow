@@ -148,6 +148,15 @@
     v.appendChild(el(
       '<div class="alert"><span class="ic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C4543A" stroke-width="2" stroke-linecap="round"><path d="M12 2v6"/><path d="M12 22v-3"/><path d="M2 14h3"/><path d="M19 14h3"/><circle cx="12" cy="14" r="4"/></svg></span><div><b>Frost warning tonight</b><p>Low 2°C · cover seedlings &amp; tender crops</p></div></div>'
     ));
+    // back-up / sign-in prompt for guests (cloud available but not signed in)
+    if (cloudConfigured() && !cloud.on) {
+      var sc = el(
+        '<div class="signin-card"><span class="ic2"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 13V3"/><path d="m8 7 4-4 4 4"/><path d="M20 16.5A4.5 4.5 0 0 0 16 9h-1.3A7 7 0 1 0 5 17.3"/></svg></span>' +
+        '<div class="t"><b>Back up your farm</b><span>Sign in to sync across devices and keep your data safe.</span></div>' +
+        '<button id="cardSignin">Sign in</button></div>');
+      v.appendChild(sc);
+      $('#cardSignin', sc).addEventListener('click', promptSignIn);
+    }
     // install card (if not installed)
     if (!isStandalone() && installAvailable()) {
       var ic = el(
@@ -599,11 +608,30 @@
       toast(navigator.onLine ? 'All changes saved on this device' : 'Offline — changes saved locally, will be safe');
     };
   }
+  function relTime(ts) {
+    if (!ts) return '';
+    var s = Math.floor((Date.now() - ts) / 1000);
+    if (s < 10) return 'just now';
+    if (s < 60) return s + 's ago';
+    var m = Math.floor(s / 60);
+    if (m < 60) return m + 'm ago';
+    var h = Math.floor(m / 60);
+    if (h < 24) return h + 'h ago';
+    return Math.floor(h / 24) + 'd ago';
+  }
   function updateSyncPill() {
     var p = $('#syncPill'), t = $('#syncText'); if (!p || !t) return;
-    if (navigator.onLine) { p.classList.remove('is-offline'); t.textContent = 'Synced'; }
-    else { p.classList.add('is-offline'); t.textContent = 'Offline'; }
+    if (!navigator.onLine) { p.classList.add('is-offline'); t.textContent = cloud.on ? 'Offline' : 'Offline-ready'; return; }
+    p.classList.remove('is-offline');
+    if (cloud.on) {
+      t.textContent = cloud.saving ? 'Saving…' : (cloud.lastSync ? 'Synced ' + relTime(cloud.lastSync) : 'Synced');
+    } else if (cloudConfigured()) {
+      t.textContent = 'Saved on device';
+    } else {
+      t.textContent = 'Synced';
+    }
   }
+  setInterval(function () { if (cloud.on && !cloud.saving) updateSyncPill(); }, 30000);
   window.addEventListener('online', updateSyncPill);
   window.addEventListener('offline', updateSyncPill);
 
@@ -693,11 +721,12 @@
 
   function scheduleCloudSave() {
     clearTimeout(cloud.saveTimer);
+    cloud.saving = true; updateSyncPill();
     cloud.saveTimer = setTimeout(function () {
       if (!cloud.on) return;
       userDoc().set({ db: DB, updatedAt: Date.now(), client: 'web' }, { merge: true })
-        .then(function () { updateSyncPill(); })
-        .catch(function () { /* queued by Firestore offline persistence; will flush when online */ });
+        .then(function () { cloud.saving = false; cloud.lastSync = Date.now(); updateSyncPill(); })
+        .catch(function () { cloud.saving = false; updateSyncPill(); /* queued by Firestore offline persistence; flushes when online */ });
     }, 700);
   }
 
@@ -707,11 +736,13 @@
     DB = remote;
     save();            // writes the local cache only (cloud.applying guards the push)
     cloud.applying = false;
+    cloud.lastSync = Date.now(); updateSyncPill();
     render();
   }
 
   function startCloudSync(user, onReady) {
     cloud.on = true; cloud.uid = user.uid; cloud.email = user.email; cloud.phone = user.phoneNumber;
+    cloud.saving = false; cloud.lastSync = null;
     var cached = load();                 // per-user offline cache (instant, offline-friendly)
     var booted = false;
     function bootOnce(db) { DB = db; if (!booted) { booted = true; onReady(); } else { render(); } }
@@ -737,6 +768,7 @@
     });
 
     function applyOrBoot(remoteDb) {
+      cloud.lastSync = Date.now();
       if (!booted) { DB = remoteDb; cloud.applying = true; save(); cloud.applying = false; booted = true; onReady(); }
       else applyRemoteDB(remoteDb);
     }
@@ -920,12 +952,60 @@
     };
   }
   function openAccountSheet() {
+    var synced = cloud.lastSync ? 'Synced ' + relTime(cloud.lastSync) : (navigator.onLine ? 'Synced to your cloud account' : 'Offline — will sync when back online');
+    var pwBlock = cloud.email
+      ? '<div class="field-group"><label>Password</label><button class="btn-soft" id="acctPw">Send password reset email</button></div>'
+      : '';
     var host = openModal(
       '<div class="modal-head"><h3>Account</h3><button class="x" id="mx">&times;</button></div>' +
-      '<div class="acct-row"><span class="acct-ic">' + LEAF + '</span><div class="acct-meta"><b>' + esc(cloud.email || cloud.phone || 'Signed in') + '</b><span>' + (navigator.onLine ? 'Synced to your cloud account' : 'Offline — will sync when back online') + '</span></div></div>' +
-      '<button class="btn-danger" id="acctOut">Sign out</button>');
+      '<div class="acct-row"><span class="acct-ic">' + LEAF + '</span><div class="acct-meta"><b>' + esc(cloud.email || cloud.phone || 'Signed in') + '</b><span>' + synced + '</span></div></div>' +
+      '<div class="field-group"><label>Farm name</label><input id="acctFarm" type="text" value="' + esc((DB.settings && DB.settings.farmName) || '') + '" placeholder="Your farm name"></div>' +
+      '<button class="btn-primary" id="acctSave">Save changes</button>' +
+      pwBlock +
+      '<button class="btn-soft" id="acctOut">Sign out</button>' +
+      '<button class="acct-del" id="acctDel">Delete account</button>');
     $('#mx', host).onclick = closeModal;
+    $('#acctSave', host).onclick = function () {
+      var name = ($('#acctFarm', host).value || '').trim();
+      if (!name) return toast('Farm name can’t be empty');
+      DB.settings = DB.settings || {}; DB.settings.farmName = name;
+      save(); closeModal(); render(); toast('Farm name updated');
+    };
+    var pw = $('#acctPw', host); if (pw) pw.onclick = function () {
+      if (!cloud.auth || !cloud.email) return;
+      cloud.auth.sendPasswordResetEmail(cloud.email)
+        .then(function () { toast('Reset link sent to ' + cloud.email); })
+        .catch(function (e) { toast(authMsg(e.code)); });
+    };
     $('#acctOut', host).onclick = function () { closeModal(); cloudSignOut(); toast('Signed out'); };
+    $('#acctDel', host).onclick = function () { closeModal(); confirmDeleteAccount(); };
+  }
+  function confirmDeleteAccount() {
+    var host = openModal(
+      '<div class="modal-head"><h3>Delete account?</h3><button class="x" id="mx">&times;</button></div>' +
+      '<p class="modal-note">This permanently deletes your account and all farm data in the cloud. This cannot be undone.</p>' +
+      '<button class="btn-danger" id="delYes">Delete everything</button>' +
+      '<button class="btn-soft" id="delNo">Cancel</button>');
+    $('#mx', host).onclick = closeModal;
+    $('#delNo', host).onclick = closeModal;
+    $('#delYes', host).onclick = function () {
+      var btn = $('#delYes', host); btn.disabled = true; btn.textContent = 'Deleting…';
+      var uid = cloud.uid;
+      userDoc().delete().catch(function () {}).then(function () {
+        var u = cloud.auth && cloud.auth.currentUser;
+        if (!u) { finishDelete(uid); return; }
+        u.delete().then(function () { finishDelete(uid); })
+          .catch(function (e) {
+            btn.disabled = false; btn.textContent = 'Delete everything';
+            if (e && e.code === 'auth/requires-recent-login') toast('Please sign out, sign in again, then delete.');
+            else toast(authMsg(e && e.code));
+          });
+      });
+    };
+  }
+  function finishDelete(uid) {
+    try { localStorage.removeItem('mfag.u.' + uid); } catch (e) {}
+    closeModal(); cloudSignOut(); toast('Account deleted');
   }
 
   function bootUI() {

@@ -173,6 +173,10 @@
       '</div>'));
     // weather forecast (sample — works offline)
     v.appendChild(weatherCard());
+    // input-supplier marketplace entry
+    var sup = el('<button class="link-card"><span class="lc-ic">🛒</span><div class="lc-t"><b>Input suppliers</b><span>Seed, fertilizer, chemicals &amp; services</span></div><span class="lc-arrow">›</span></button>');
+    sup.addEventListener('click', function () { go('suppliers'); });
+    v.appendChild(sup);
     v.appendChild(el('<div class="sec-h"><h3>Your fields</h3><span class="link" id="addField2">+ Add field</span></div>'));
     $('#addField2', v).addEventListener('click', openFieldForm);
 
@@ -457,7 +461,27 @@
     } else {
       tasks.forEach(function (t) { v.appendChild(woCard(t)); });
     }
+
+    // harvest / yield records
+    v.appendChild(el('<div class="sec-h" style="margin-top:18px"><h3>Harvest records</h3><span class="link" id="addYield">+ Add harvest</span></div>'));
+    $('#addYield', v).addEventListener('click', function () { openYieldForm(fld.id); });
+    var ys = DB.yields.filter(function (y) { return y.fieldId === fld.id; }).sort(function (a, b) { return a.harvestISO < b.harvestISO ? 1 : -1; });
+    if (!ys.length) {
+      v.appendChild(el('<p class="hint">No harvests logged yet. Recording yields builds the history lenders and insurers look for.</p>'));
+    } else {
+      ys.forEach(function (y) {
+        var row = el('<button class="yield-row"><span class="yic">' + cropOf(y.crop).e + '</span>' +
+          '<div class="ym"><div class="yn">' + (y.totalKg).toLocaleString('en-US') + ' kg · ' + fmtDate(y.harvestISO) + '</div>' +
+          '<div class="ys">' + (y.areaHa || fld.sizeHa) + ' ha · ' + yieldPerHa(y, fld) + ' kg/ha' + (y.note ? ' · ' + esc(y.note) : '') + '</div></div></button>');
+        row.addEventListener('click', function () { openYieldForm(fld.id, y); });
+        v.appendChild(row);
+      });
+    }
     setFab('+ Task', function () { openTaskForm(fld.id); });
+  }
+  function yieldPerHa(y, fld) {
+    var ha = +(y.areaHa || (fld && fld.sizeHa) || 0);
+    return ha ? Math.round(y.totalKg / ha).toLocaleString('en-US') : '—';
   }
   function openCount(fid) { return DB.tasks.filter(function (t) { return t.fieldId === fid && !t.completed; }).length; }
   function spendForField(fid) { return DB.expenses.filter(function (e) { return e.fieldId === fid; }).reduce(function (a, x) { return a + (+x.amount || 0); }, 0); }
@@ -528,6 +552,16 @@
       var sub = (fld ? fld.tag + ' · ' : 'Whole farm · ') + fmtDate(e.dateISO) + (e.note ? ' · ' + esc(e.note) : '');
       v.appendChild(el('<div class="expense-row"><span class="ec" style="background:' + (CATCOLOR[e.category] || '#5e7080') + '"></span><div class="em"><div class="ename">' + esc(e.category) + '</div><div class="esub">' + sub + '</div></div><div class="eamt">' + money(e.amount) + '</div></div>'));
     });
+    // data & plan
+    v.appendChild(el('<div class="sec-h" style="margin-top:18px"><h3>Records &amp; plan</h3>' + (isPro() ? '<span class="link pro-badge">PRO</span>' : '') + '</div>'));
+    var links = el('<div class="acct-links acct-links-block">' +
+      '<button class="acct-link" id="mExport">Export records (CSV / PDF)</button>' +
+      '<button class="acct-link" id="mPro">' + (isPro() ? 'Manage Pro' : 'Upgrade to Pro') + '</button>' +
+      '<button class="acct-link" id="mPriv">Privacy</button></div>');
+    v.appendChild(links);
+    $('#mExport', links).onclick = openExportSheet;
+    $('#mPro', links).onclick = openUpgradeSheet;
+    $('#mPriv', links).onclick = openPrivacy;
     setFab('+ Expense', openExpenseForm);
   }
 
@@ -545,6 +579,154 @@
     v.appendChild(el('<p style="font-size:12.5px;color:var(--muted);margin:-6px 2px 14px;line-height:1.5">Quick reference, available offline. Always follow the product label and local regulations. When unsure, consult your extension officer.</p>'));
     PESTS.forEach(function (p) {
       v.appendChild(el('<div class="pest"><div class="ph"><span class="pic">' + p.e + '</span><div><div class="pname">' + p.name + '</div><div class="pcrop">' + p.crop + '</div></div></div><div class="pbody">' + p.body + '</div></div>'));
+    });
+    hideFab();
+  }
+
+  /* ===================================================================
+     RECORDS / PRO / CONSENT / EXPORT / MARKETPLACE
+     =================================================================== */
+  function normalizeDB() {
+    if (!DB) return;
+    DB.settings = DB.settings || {};
+    if (!DB.yields) DB.yields = [];
+    if (!DB.settings.plan) DB.settings.plan = 'free';
+  }
+  function isPro() { return !!(DB && DB.settings && DB.settings.plan === 'pro'); }
+  function requirePro(cb) { if (isPro()) return cb(); openUpgradeSheet(); }
+
+  function openYieldForm(fieldId, existing) {
+    var fld = fieldById(fieldId); if (!fld) return;
+    var ed = existing && existing.id ? existing : null;
+    var host = openModal(
+      '<div class="modal-head"><h3>' + (ed ? 'Edit harvest' : 'Add harvest') + '</h3><button class="x" id="mx">&times;</button></div>' +
+      '<div class="acct-row"><span class="acct-ic" style="background:var(--green-soft)">' + cropOf(fld.crop).e + '</span><div class="acct-meta"><b>' + esc(fld.tag) + ' · ' + cropOf(fld.crop).label + '</b><span>' + fld.sizeHa + ' ha</span></div></div>' +
+      '<div class="row2"><div class="field-group"><label>Harvest date</label><input id="yDate" type="date" value="' + (ed ? ed.harvestISO : addDays(0)) + '"></div>' +
+      '<div class="field-group"><label>Area harvested (ha)</label><input id="yArea" type="number" inputmode="decimal" step="0.1" value="' + (ed ? ed.areaHa : fld.sizeHa) + '"></div></div>' +
+      '<div class="field-group"><label>Total yield (kg)</label><input id="yKg" type="number" inputmode="decimal" step="1" value="' + (ed ? ed.totalKg : '') + '" placeholder="e.g. 1250"></div>' +
+      '<div class="field-group"><label>Yield per hectare</label><input id="yPerHa" type="text" readonly></div>' +
+      '<div class="field-group"><label>Notes (optional)</label><textarea id="yNote" rows="2" placeholder="Variety, conditions, buyer…">' + esc(ed ? (ed.note || '') : '') + '</textarea></div>' +
+      '<button class="btn-primary" id="ySave">' + (ed ? 'Save changes' : 'Add harvest') + '</button>' +
+      (ed ? '<button class="btn-danger" id="yDel">Delete harvest</button>' : ''));
+    function recompute() {
+      var kg = parseFloat($('#yKg', host).value) || 0, ha = parseFloat($('#yArea', host).value) || 0;
+      $('#yPerHa', host).value = ha ? Math.round(kg / ha).toLocaleString('en-US') + ' kg/ha' : '—';
+    }
+    $('#yKg', host).addEventListener('input', recompute);
+    $('#yArea', host).addEventListener('input', recompute);
+    recompute();
+    $('#mx', host).onclick = closeModal;
+    $('#ySave', host).onclick = function () {
+      var kg = parseFloat($('#yKg', host).value) || 0;
+      if (kg <= 0) return toast('Enter the total yield in kg');
+      var area = parseFloat($('#yArea', host).value) || fld.sizeHa;
+      var date = $('#yDate', host).value || addDays(0);
+      var note = $('#yNote', host).value.trim();
+      if (ed) { ed.harvestISO = date; ed.areaHa = area; ed.totalKg = kg; ed.note = note; }
+      else { DB.yields.push({ id: f(), fieldId: fld.id, crop: fld.crop, harvestISO: date, areaHa: area, totalKg: kg, note: note }); }
+      save(); closeModal(); render(); toast(ed ? 'Harvest updated' : 'Harvest logged');
+    };
+    if (ed) $('#yDel', host).onclick = function () { DB.yields = DB.yields.filter(function (x) { return x.id !== ed.id; }); save(); closeModal(); render(); toast('Harvest deleted'); };
+  }
+
+  function openUpgradeSheet() {
+    var pro = isPro();
+    var host = openModal(
+      '<div class="modal-head"><h3>MaintainFlow Pro</h3><button class="x" id="mx">&times;</button></div>' +
+      '<p class="modal-note">Tools for growing and financing your farm:</p>' +
+      '<ul class="pro-list"><li>Printable PDF records to share with lenders &amp; buyers</li><li>Input-supplier marketplace &amp; quote requests</li><li>Multi-season yield analytics <span class="soon">soon</span></li><li>Priority support</li></ul>' +
+      (pro ? '<div class="pro-on">✓ Pro is active on your account</div><button class="btn-soft" id="proOff">Switch back to Free</button>'
+           : '<button class="btn-primary" id="proGo">Activate Pro</button><p class="hint" style="text-align:center;margin-top:8px">Billing isn’t connected yet — this enables Pro for evaluation.</p>'));
+    $('#mx', host).onclick = closeModal;
+    var go2 = $('#proGo', host); if (go2) go2.onclick = function () { DB.settings.plan = 'pro'; save(); closeModal(); render(); toast('Pro activated 🎉'); };
+    var off = $('#proOff', host); if (off) off.onclick = function () { DB.settings.plan = 'free'; save(); closeModal(); render(); toast('Switched to Free'); };
+  }
+
+  function privacyHtml() {
+    return '<p>MaintainFlow Ag stores your farm records (fields, work orders, expenses, harvests and, if you choose, your location) to run the app and — when you sign in — to sync them across your devices.</p>' +
+      '<p>Your data is yours. We do not sell personal data. Aggregated, anonymised insights may be used to improve the service. You can export or delete your data any time from the Account screen.</p>' +
+      '<p>Sign-in uses Firebase (Google) for authentication and storage; weather uses Open-Meteo based on a location you provide.</p>';
+  }
+  function openPrivacy() {
+    var host = openModal('<div class="modal-head"><h3>Privacy</h3><button class="x" id="mx">&times;</button></div><div class="legal">' + privacyHtml() + '</div><button class="btn-soft" id="pClose">Close</button>');
+    $('#mx', host).onclick = closeModal; $('#pClose', host).onclick = closeModal;
+  }
+  function showConsent() {
+    var host = openModal('<div class="modal-head"><h3>Welcome to MaintainFlow Ag</h3></div><p class="modal-note">A quick note on your data before you start:</p><div class="legal">' + privacyHtml() + '</div><button class="btn-primary" id="cAgree">Agree &amp; continue</button>');
+    $('#modalHost').onclick = null; // must choose Agree
+    $('#cAgree', host).onclick = function () { DB.settings = DB.settings || {}; DB.settings.consent = true; save(); closeModal(); };
+  }
+
+  function csvCell(s) { s = String(s == null ? '' : s); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
+  function toCSV(rows) { return rows.map(function (r) { return r.map(csvCell).join(','); }).join('\r\n'); }
+  function downloadFile(name, text, type) {
+    var blob = new Blob([text], { type: type || 'text/csv;charset=utf-8' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click();
+    setTimeout(function () { document.body.removeChild(a); URL.revokeObjectURL(url); }, 0);
+  }
+  function exportCSV() {
+    var rows = [['Record', 'Field', 'Crop', 'Date', 'Detail', 'Amount/Yield', 'Area ha', 'Note']];
+    DB.fields.forEach(function (fl) { rows.push(['Field', fl.tag, cropOf(fl.crop).label, fl.plantedISO, fl.variety, '', fl.sizeHa, (fl.lat != null ? fl.lat.toFixed(5) + ',' + fl.lng.toFixed(5) : '')]); });
+    DB.tasks.forEach(function (t) { var fl = fieldById(t.fieldId); rows.push(['Task', fl ? fl.tag : '', fl ? cropOf(fl.crop).label : '', t.dueISO, t.type + ': ' + t.name, t.cost || 0, '', t.completed ? 'done' : 'open']); });
+    DB.expenses.forEach(function (e) { var fl = fieldById(e.fieldId); rows.push(['Expense', fl ? fl.tag : 'Whole farm', '', e.dateISO, e.category, e.amount, '', e.note || '']); });
+    DB.yields.forEach(function (y) { var fl = fieldById(y.fieldId); rows.push(['Harvest', fl ? fl.tag : '', cropOf(y.crop).label, y.harvestISO, 'yield (kg)', y.totalKg, y.areaHa, y.note || '']); });
+    downloadFile('maintainflow-records-' + addDays(0) + '.csv', toCSV(rows));
+    toast('CSV exported');
+  }
+  function printReport() {
+    var w = window.open('', '_blank');
+    if (!w) { toast('Allow pop-ups to create the PDF'); return; }
+    function rowsHtml(arr) { return arr.join(''); }
+    var fields = DB.fields.map(function (fl) { return '<tr><td>' + esc(fl.tag) + '</td><td>' + cropOf(fl.crop).label + ' · ' + esc(fl.variety) + '</td><td>' + fl.sizeHa + ' ha</td><td>' + fmtDate(fl.plantedISO) + '</td></tr>'; });
+    var harvests = DB.yields.map(function (y) { var fl = fieldById(y.fieldId); return '<tr><td>' + (fl ? esc(fl.tag) : '') + '</td><td>' + cropOf(y.crop).label + '</td><td>' + fmtDate(y.harvestISO) + '</td><td>' + y.totalKg.toLocaleString('en-US') + ' kg</td><td>' + yieldPerHa(y, fl) + ' kg/ha</td></tr>'; });
+    var totalSp = totalSpend();
+    var html = '<!doctype html><html><head><meta charset="utf-8"><title>Farm records</title><style>' +
+      'body{font-family:Arial,Helvetica,sans-serif;color:#13202b;margin:28px}h1{font-size:20px;margin:0 0 2px}h2{font-size:14px;margin:22px 0 8px;color:#1B5E20}' +
+      '.sub{color:#5e7080;font-size:12px}table{width:100%;border-collapse:collapse;font-size:12px}th,td{text-align:left;padding:7px 8px;border-bottom:1px solid #e7e3d8}th{color:#5e7080;text-transform:uppercase;font-size:10px;letter-spacing:.04em}' +
+      '.tot{margin-top:8px;font-size:13px}</style></head><body>' +
+      '<h1>' + esc(DB.settings.farmName || 'Farm') + ' — records</h1>' +
+      '<div class="sub">Generated ' + fmtDate(addDays(0)) + ' · MaintainFlow Ag</div>' +
+      '<h2>Fields</h2><table><tr><th>Tag</th><th>Crop</th><th>Size</th><th>Planted</th></tr>' + rowsHtml(fields) + '</table>' +
+      '<h2>Harvests</h2>' + (harvests.length ? '<table><tr><th>Field</th><th>Crop</th><th>Date</th><th>Yield</th><th>Per ha</th></tr>' + rowsHtml(harvests) + '</table>' : '<div class="sub">No harvests recorded.</div>') +
+      '<h2>Costs</h2><div class="tot">Total spend to date: <b>' + money(totalSp) + '</b> across ' + DB.fields.length + ' fields.</div>' +
+      '</body></html>';
+    w.document.write(html); w.document.close(); w.focus();
+    setTimeout(function () { try { w.print(); } catch (e) {} }, 350);
+  }
+  function openExportSheet() {
+    var host = openModal(
+      '<div class="modal-head"><h3>Export records</h3><button class="x" id="mx">&times;</button></div>' +
+      '<p class="modal-note">Share your farm history with a lender, buyer or co-op.</p>' +
+      '<button class="btn-soft" id="exCsv">Download CSV (all records)</button>' +
+      '<button class="btn-primary" id="exPdf">Printable PDF report' + (isPro() ? '' : ' · Pro') + '</button>');
+    $('#mx', host).onclick = closeModal;
+    $('#exCsv', host).onclick = function () { closeModal(); exportCSV(); };
+    $('#exPdf', host).onclick = function () { closeModal(); requirePro(printReport); };
+  }
+
+  /* ---- INPUT SUPPLIER MARKETPLACE ---- */
+  var SUPPLIERS = [
+    { e: '🌽', name: 'AgriSeed Botswana', cat: 'Seed', loc: 'Gaborone', items: 'Maize (SC Duma 43), soybean, sorghum & sunflower seed' },
+    { e: '🧪', name: 'GrowChem Supplies', cat: 'Fertilizer & chemicals', loc: 'Francistown', items: 'Compound D, LAN, urea, herbicides & fungicides' },
+    { e: '🚜', name: 'FarmMech Hire', cat: 'Mechanisation', loc: 'Lobatse', items: 'Tractor, planter & sprayer hire; land preparation' },
+    { e: '💧', name: 'Kalahari Irrigation', cat: 'Irrigation', loc: 'Gaborone', items: 'Drip kits, pumps, piping & boreholes' }
+  ];
+  function viewSuppliers() {
+    $('#topbar').innerHTML =
+      '<div class="tb-back"><button class="bk" id="backBtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg></button>' +
+      '<button class="offline" id="syncPill" type="button" style="margin-left:auto"><span class="dot"></span><span id="syncText">Offline-ready</span></button></div>' +
+      '<div class="tb-title"><div class="t">Input suppliers</div><div class="row">Seed, fertilizer, chemicals &amp; services</div></div>';
+    $('#backBtn').addEventListener('click', function () { go('fields'); });
+    wireSyncPill(); updateSyncPill();
+    var v = $('#view'); v.innerHTML = '';
+    v.appendChild(el('<p class="hint">Sample directory. Requesting a quote is a Pro feature.</p>'));
+    SUPPLIERS.forEach(function (s) {
+      var row = el('<div class="supplier"><span class="sic">' + s.e + '</span>' +
+        '<div class="sm"><div class="snm">' + esc(s.name) + '</div><div class="scat">' + esc(s.cat) + ' · ' + esc(s.loc) + '</div><div class="sit">' + esc(s.items) + '</div></div>' +
+        '<button class="s-contact">Quote</button></div>');
+      $('.s-contact', row).addEventListener('click', function () { requirePro(function () { toast('Quote request sent to ' + s.name); }); });
+      v.appendChild(row);
     });
     hideFab();
   }
@@ -668,8 +850,9 @@
   /* ---------------- router ---------------- */
   function go(view) { state.view = view; if (view !== 'field') state.taskFilter = 'All'; render(); window.scrollTo(0, 0); $('#view').scrollTop = 0; }
   function render() {
+    normalizeDB();
     document.querySelectorAll('.nav-item').forEach(function (b) {
-      var match = b.dataset.view === state.view || (state.view === 'field' && b.dataset.view === 'fields');
+      var match = b.dataset.view === state.view || (state.view === 'field' && b.dataset.view === 'fields') || (state.view === 'suppliers' && b.dataset.view === 'money');
       b.classList.toggle('on', match);
     });
     if (state.view === 'fields') viewFields();
@@ -677,6 +860,7 @@
     else if (state.view === 'tasks') viewAllTasks();
     else if (state.view === 'money') viewMoney();
     else if (state.view === 'pests') viewPests();
+    else if (state.view === 'suppliers') viewSuppliers();
     syncInstallBanner();
   }
   // global "Tasks" tab = all open work orders across fields
@@ -1071,9 +1255,15 @@
       '<div class="field-group"><label>Farm name</label><input id="acctFarm" type="text" value="' + esc((DB.settings && DB.settings.farmName) || '') + '" placeholder="Your farm name"></div>' +
       '<button class="btn-primary" id="acctSave">Save changes</button>' +
       pwBlock +
+      '<div class="acct-links"><button class="acct-link" id="acctExport">Export records</button>' +
+      '<button class="acct-link" id="acctPro">' + (isPro() ? 'Manage Pro' : 'Upgrade to Pro') + '</button>' +
+      '<button class="acct-link" id="acctPriv">Privacy</button></div>' +
       '<button class="btn-soft" id="acctOut">Sign out</button>' +
       '<button class="acct-del" id="acctDel">Delete account</button>');
     $('#mx', host).onclick = closeModal;
+    $('#acctExport', host).onclick = function () { closeModal(); openExportSheet(); };
+    $('#acctPro', host).onclick = function () { closeModal(); openUpgradeSheet(); };
+    $('#acctPriv', host).onclick = function () { closeModal(); openPrivacy(); };
     $('#acctSave', host).onclick = function () {
       var name = ($('#acctFarm', host).value || '').trim();
       if (!name) return toast('Farm name can’t be empty');
@@ -1125,6 +1315,7 @@
     if (isIOS() && !isStandalone() && DB && !DB.dismissInstall) { setTimeout(syncInstallBanner, 1200); }
     render();
     ensureWeather();   // refresh local weather if a farm location is known
+    if (DB && DB.settings && !DB.settings.consent) setTimeout(showConsent, 400);
   }
 
   function startCloud() {

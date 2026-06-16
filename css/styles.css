@@ -274,6 +274,37 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;color:inhe
 .auth-gate .ag-guest{display:block;width:100%;margin-top:16px;padding-top:14px;border-top:1px solid var(--hair);color:var(--muted);font-size:13px;font-weight:600}
 .auth-gate .ag-foot{text-align:center;color:#dff0e0;font-size:12px;margin-top:18px}
 
+/* records / pro / suppliers / export */
+.hint{font-size:12px;color:var(--muted);line-height:1.5;margin:-4px 2px 14px}
+.yield-row{display:flex;align-items:center;gap:12px;background:#fff;border:1px solid var(--hair);border-radius:13px;padding:12px 13px;margin-bottom:10px;width:100%;text-align:left}
+.yield-row .yic{width:38px;height:38px;border-radius:10px;flex:0 0 38px;display:grid;place-items:center;font-size:19px;background:var(--green-soft)}
+.yield-row .ym{flex:1;min-width:0}
+.yield-row .yn{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:13.5px}
+.yield-row .ys{font-size:11.5px;color:var(--muted);margin-top:2px}
+.link-card{display:flex;align-items:center;gap:12px;background:#fff;border:1px solid var(--hair);border-radius:14px;padding:13px 14px;margin-bottom:16px;width:100%;text-align:left}
+.link-card .lc-ic{width:38px;height:38px;border-radius:11px;flex:0 0 38px;display:grid;place-items:center;font-size:19px;background:var(--green-soft)}
+.link-card .lc-t{flex:1;min-width:0}
+.link-card .lc-t b{font-family:'Space Grotesk',sans-serif;font-size:14px;display:block}
+.link-card .lc-t span{font-size:11.5px;color:var(--muted);display:block;margin-top:1px}
+.link-card .lc-arrow{font-size:22px;color:var(--muted);line-height:1}
+.supplier{display:flex;align-items:center;gap:12px;background:#fff;border:1px solid var(--hair);border-radius:14px;padding:13px;margin-bottom:11px}
+.supplier .sic{width:42px;height:42px;border-radius:12px;flex:0 0 42px;display:grid;place-items:center;font-size:21px;background:var(--green-soft)}
+.supplier .sm{flex:1;min-width:0}
+.supplier .snm{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:14px}
+.supplier .scat{font-size:11px;color:var(--green-deep);font-weight:600;margin-top:1px}
+.supplier .sit{font-size:11.5px;color:var(--muted);margin-top:3px;line-height:1.4}
+.supplier .s-contact{align-self:center;background:var(--green);color:#fff;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:12px;padding:9px 14px;border-radius:10px;flex:0 0 auto}
+.pro-list{margin:6px 0 16px;padding-left:18px;display:flex;flex-direction:column;gap:8px}
+.pro-list li{font-size:13px;line-height:1.4}
+.pro-list .soon{font-size:9.5px;font-weight:700;color:var(--gold-ink);background:rgba(232,169,60,.18);padding:2px 6px;border-radius:6px;margin-left:4px;vertical-align:middle}
+.pro-on{background:var(--green-soft);color:var(--green-deep);font-weight:600;font-size:13px;border-radius:11px;padding:12px;text-align:center;margin-bottom:6px}
+.pro-badge{background:var(--green);color:#fff;font-size:10px;font-weight:700;letter-spacing:.06em;padding:3px 9px;border-radius:999px}
+.legal{font-size:12.5px;color:var(--muted);line-height:1.55;max-height:46vh;overflow-y:auto}
+.legal p{margin-bottom:10px}
+.acct-links{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:14px;padding-top:12px;border-top:1px solid var(--hair)}
+.acct-links-block{border-top:0;margin-top:4px;padding-top:0}
+.acct-link{color:var(--green-deep);font-weight:600;font-size:13px;padding:4px 0}
+
 /* toast */
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(86px + var(--safe-bot));background:var(--navy);color:#fff;font-size:13px;font-weight:500;padding:12px 18px;border-radius:12px;z-index:80;box-shadow:0 12px 28px -10px rgba(0,0,0,.5);animation:toastIn .3s both}
 @keyframes toastIn{from{opacity:0;transform:translate(-50%,12px)}to{opacity:1;transform:translate(-50%,0)}}

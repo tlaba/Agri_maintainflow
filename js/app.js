@@ -144,10 +144,8 @@
   function viewFields() {
     homeTopbar();
     var v = $('#view'); v.innerHTML = '';
-    // alert (frost) — only if user has veg/seedlings
-    v.appendChild(el(
-      '<div class="alert"><span class="ic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C4543A" stroke-width="2" stroke-linecap="round"><path d="M12 2v6"/><path d="M12 22v-3"/><path d="M2 14h3"/><path d="M19 14h3"/><circle cx="12" cy="14" r="4"/></svg></span><div><b>Frost warning tonight</b><p>Low 2°C · cover seedlings &amp; tender crops</p></div></div>'
-    ));
+    // frost risk alert — only when real weather data shows a low ≤ 3°C
+    var frost = frostAlertEl(); if (frost) v.appendChild(frost);
     // back-up / sign-in prompt for guests (cloud available but not signed in)
     if (cloudConfigured() && !cloud.on) {
       var sc = el(
@@ -203,13 +201,123 @@
     }
     setFab('+ Field', openFieldForm);
   }
+  /* ---------------- weather (Open-Meteo, cached for offline) + geolocation ---------------- */
+  var WX_KEY = 'mfag.wx';
+  var wxState = null;      // { ts, lat, lng, temp, code, wind, tmin }
+  var wxBusy = false;      // fetching current location for weather
+  var geoBusy = false;     // pinning a field's location
+  function wxLoad() { try { return JSON.parse(localStorage.getItem(WX_KEY) || 'null'); } catch (e) { return null; } }
+  function wxStore(o) { try { localStorage.setItem(WX_KEY, JSON.stringify(o)); } catch (e) {} }
+  var WXCODE = {
+    0: ['Clear sky', 'sun'], 1: ['Mainly clear', 'sun'], 2: ['Partly cloudy', 'cloud'], 3: ['Overcast', 'cloud'],
+    45: ['Fog', 'cloud'], 48: ['Rime fog', 'cloud'],
+    51: ['Light drizzle', 'rain'], 53: ['Drizzle', 'rain'], 55: ['Heavy drizzle', 'rain'], 56: ['Freezing drizzle', 'rain'], 57: ['Freezing drizzle', 'rain'],
+    61: ['Light rain', 'rain'], 63: ['Rain', 'rain'], 65: ['Heavy rain', 'rain'], 66: ['Freezing rain', 'rain'], 67: ['Freezing rain', 'rain'],
+    71: ['Light snow', 'snow'], 73: ['Snow', 'snow'], 75: ['Heavy snow', 'snow'], 77: ['Snow grains', 'snow'],
+    80: ['Rain showers', 'rain'], 81: ['Rain showers', 'rain'], 82: ['Violent showers', 'rain'],
+    85: ['Snow showers', 'snow'], 86: ['Snow showers', 'snow'], 95: ['Thunderstorm', 'storm'], 96: ['Thunderstorm', 'storm'], 99: ['Thunderstorm', 'storm']
+  };
+  function wxIcon(kind) {
+    var s = 'fill="none" stroke="#15A0A2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"';
+    if (kind === 'sun') return '<svg width="24" height="24" viewBox="0 0 24 24" ' + s + '><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
+    if (kind === 'rain') return '<svg width="24" height="24" viewBox="0 0 24 24" ' + s + '><path d="M16 13a4 4 0 0 0-3.5-3.97 5 5 0 0 0-9.69 1.32A3.5 3.5 0 0 0 4 17h11a3 3 0 0 0 1-3.84Z"/><path d="M8 19v1.5M12 19.5V21M16 19v1.5"/></svg>';
+    if (kind === 'storm') return '<svg width="24" height="24" viewBox="0 0 24 24" ' + s + '><path d="M16 13a4 4 0 0 0-3.5-3.97 5 5 0 0 0-9.69 1.32A3.5 3.5 0 0 0 4 17h9"/><path d="m13 12-3 5h3l-2 4"/></svg>';
+    if (kind === 'snow') return '<svg width="24" height="24" viewBox="0 0 24 24" ' + s + '><path d="M16 13a4 4 0 0 0-3.5-3.97 5 5 0 0 0-9.69 1.32A3.5 3.5 0 0 0 4 17h11a3 3 0 0 0 1-3.84Z"/><path d="M8 20h.01M12 20h.01M16 20h.01"/></svg>';
+    return '<svg width="24" height="24" viewBox="0 0 24 24" ' + s + '><path d="M17.5 19a4.5 4.5 0 1 0 0-9 6 6 0 0 0-11.6-1.5A4 4 0 0 0 6 19Z"/></svg>';
+  }
+  function wxFetch(lat, lng, cb) {
+    if (!window.fetch) { if (cb) cb(); return; }
+    var url = 'https://api.open-meteo.com/v1/forecast?latitude=' + lat.toFixed(3) + '&longitude=' + lng.toFixed(3) +
+      '&current=temperature_2m,weather_code,wind_speed_10m&daily=temperature_2m_min&forecast_days=1&timezone=auto';
+    fetch(url).then(function (r) { return r.json(); }).then(function (j) {
+      if (!j || !j.current) { if (cb) cb(); return; }
+      wxState = {
+        ts: Date.now(), lat: lat, lng: lng,
+        temp: Math.round(j.current.temperature_2m),
+        code: j.current.weather_code,
+        wind: Math.round(j.current.wind_speed_10m),
+        tmin: (j.daily && j.daily.temperature_2m_min) ? Math.round(j.daily.temperature_2m_min[0]) : null
+      };
+      wxStore(wxState);
+      if (cb) cb();
+      if (state.view === 'fields') render();
+    }).catch(function () { if (cb) cb(); });
+  }
+  function ensureWeather() {
+    if (!wxState) wxState = wxLoad();
+    var geo = DB && DB.settings && DB.settings.geo;
+    if (!geo || !navigator.onLine) return;
+    if (wxState && Date.now() - wxState.ts < 30 * 60 * 1000) return; // fresh enough
+    wxFetch(geo.lat, geo.lng);
+  }
+  function enableWeather() {
+    if (!navigator.geolocation) { toast('Location isn’t available on this device'); return; }
+    wxBusy = true; if (state.view === 'fields') render();
+    navigator.geolocation.getCurrentPosition(function (pos) {
+      wxBusy = false;
+      DB.settings = DB.settings || {};
+      DB.settings.geo = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      save();
+      wxFetch(pos.coords.latitude, pos.coords.longitude, function () { if (state.view === 'fields') render(); });
+    }, function (err) {
+      wxBusy = false; if (state.view === 'fields') render();
+      toast(err && err.code === 1 ? 'Location permission denied' : 'Couldn’t get your location');
+    }, { enableHighAccuracy: false, timeout: 10000, maximumAge: 600000 });
+  }
   function weatherCard() {
-    return el(
-      '<div class="weather">' +
-        '<span class="wic"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#15A0A2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 13a4 4 0 0 0-3.5-3.97 5 5 0 0 0-9.69 1.32A3.5 3.5 0 0 0 4 17h11a3 3 0 0 0 1-3.84Z"/><path d="M8 19v1.5"/><path d="M12 19.5V21"/><path d="M16 19v1.5"/></svg></span>' +
-        '<div class="wmeta"><div class="wlbl">Weather forecast</div><div class="wtemp">22°C</div><div class="wcond">Light rain · gentle breeze</div></div>' +
-        '<span class="wday">Today</span>' +
-      '</div>');
+    if (!wxState) wxState = wxLoad();
+    if (!wxState) {
+      var cta = el('<div class="weather"><span class="wic">' + wxIcon('cloud') + '</span>' +
+        '<div class="wmeta"><div class="wlbl">Local weather</div><div class="wcond">' + (wxBusy ? 'Getting your location…' : 'See current weather for your farm') + '</div></div>' +
+        '<button class="wbtn" id="wxEnable"' + (wxBusy ? ' disabled' : '') + '>' + (wxBusy ? '…' : 'Enable') + '</button></div>');
+      var bn = $('#wxEnable', cta); if (bn) bn.addEventListener('click', enableWeather);
+      return cta;
+    }
+    var info = WXCODE[wxState.code] || ['—', 'cloud'];
+    var stale = (Date.now() - wxState.ts) > 60 * 60 * 1000 || !navigator.onLine;
+    var sub = info[0] + ' · ' + wxState.wind + ' km/h' + (wxState.tmin != null ? ' · low ' + wxState.tmin + '°' : '');
+    return el('<div class="weather"><span class="wic">' + wxIcon(info[1]) + '</span>' +
+      '<div class="wmeta"><div class="wlbl">Weather forecast</div><div class="wtemp">' + wxState.temp + '°C</div><div class="wcond">' + esc(sub) + '</div></div>' +
+      '<span class="wday">' + (stale ? 'as of ' + relTime(wxState.ts) : 'Now') + '</span></div>');
+  }
+  function frostAlertEl() {
+    var wx = wxState || wxLoad();
+    if (!wx || wx.tmin == null) return null;        // no real data → no (fake) frost warning
+    if (wx.tmin > 3) return null;                   // no frost risk
+    return el('<div class="alert"><span class="ic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C4543A" stroke-width="2" stroke-linecap="round"><path d="M12 2v6"/><path d="M12 22v-3"/><path d="M2 14h3"/><path d="M19 14h3"/><circle cx="12" cy="14" r="4"/></svg></span><div><b>Frost risk tonight</b><p>Low ' + wx.tmin + '°C · cover seedlings &amp; tender crops</p></div></div>');
+  }
+  /* field GPS pin + open in maps */
+  function pinField(fld) {
+    if (!navigator.geolocation) { toast('Location isn’t available on this device'); return; }
+    geoBusy = true; viewField();
+    navigator.geolocation.getCurrentPosition(function (pos) {
+      geoBusy = false;
+      fld.lat = pos.coords.latitude; fld.lng = pos.coords.longitude;
+      DB.settings = DB.settings || {};
+      if (!DB.settings.geo) DB.settings.geo = { lat: fld.lat, lng: fld.lng }; // seed weather location too
+      save(); viewField(); toast('Field location pinned');
+    }, function (err) {
+      geoBusy = false; viewField();
+      toast(err && err.code === 1 ? 'Location permission denied' : 'Couldn’t get your location');
+    }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 });
+  }
+  function openInMaps(lat, lng) {
+    window.open('https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(lat + ',' + lng), '_blank', 'noopener');
+  }
+  function fieldLocRow(fld) {
+    if (fld.lat != null && fld.lng != null) {
+      var row = el('<div class="loc-row"><span class="loc-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2E7D32" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg></span>' +
+        '<div class="loc-meta"><b>Field location</b><span>' + fld.lat.toFixed(5) + ', ' + fld.lng.toFixed(5) + ' · <button class="loc-link" id="locRepin">' + (geoBusy ? 'updating…' : 'update') + '</button></span></div>' +
+        '<button class="loc-open" id="locOpen">Open in Maps</button></div>');
+      $('#locOpen', row).addEventListener('click', function () { openInMaps(fld.lat, fld.lng); });
+      var rp = $('#locRepin', row); if (rp) rp.addEventListener('click', function () { pinField(fld); });
+      return row;
+    }
+    var row2 = el('<div class="loc-row"><span class="loc-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5e7080" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg></span>' +
+      '<div class="loc-meta"><b>No location set</b><span>Pin this field to open it in Maps</span></div>' +
+      '<button class="loc-open" id="locPin"' + (geoBusy ? ' disabled' : '') + '>' + (geoBusy ? '…' : 'Pin location') + '</button></div>');
+    $('#locPin', row2).addEventListener('click', function () { pinField(fld); });
+    return row2;
   }
   /* lightweight crop-family plant art (base anchored at 0,0, drawn upward) */
   function cropPlant(art) {
@@ -323,6 +431,7 @@
       '<div class="mini-kpis"><div><div class="v">' + days + '</div><div class="l">Days in</div></div>' +
       '<div><div class="v">' + openCount(fld.id) + '</div><div class="l">Open tasks</div></div>' +
       '<div><div class="v">' + money(spendForField(fld.id)) + '</div><div class="l">Spend</div></div></div>'));
+    v.appendChild(fieldLocRow(fld));
 
     var filters = ['All', 'Fertilizer', 'Spray', 'Done'];
     var chips = el('<div class="chips"></div>');
@@ -1015,6 +1124,7 @@
     /* iOS install banner (no beforeinstallprompt on iOS) */
     if (isIOS() && !isStandalone() && DB && !DB.dismissInstall) { setTimeout(syncInstallBanner, 1200); }
     render();
+    ensureWeather();   // refresh local weather if a farm location is known
   }
 
   function startCloud() {

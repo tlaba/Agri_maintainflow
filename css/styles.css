@@ -243,6 +243,7 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;color:inhe
 .auth-gate .ag-btn:disabled{opacity:.6}
 .auth-gate .ag-alt{text-align:center;font-size:13px;color:var(--muted);margin-top:13px}
 .auth-gate .ag-link{color:var(--green-deep);font-weight:700;font-size:13px}
+.auth-gate .ag-guest{display:block;width:100%;margin-top:16px;padding-top:14px;border-top:1px solid var(--hair);color:var(--muted);font-size:13px;font-weight:600}
 .auth-gate .ag-foot{text-align:center;color:#dff0e0;font-size:12px;margin-top:18px}
 
 /* toast */

@@ -1,5 +1,5 @@
 /* MaintainFlow Ag — service worker (offline-first) */
-var VERSION = 'mfag-v1.0.6';
+var VERSION = 'mfag-v1.0.7';
 var CORE = [
   './',
   './index.html',

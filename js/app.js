@@ -1160,19 +1160,15 @@
       v.appendChild(el('<div class="menu-row"><span class="m-av">' + esc(((DB.settings.farmName || 'F').trim()[0] || 'F').toUpperCase()) + '</span><span class="m-l"><b>' + esc(DB.settings.farmName || 'My farm') + '</b><span class="m-sub">Saved on this device</span></span></div>'));
     }
 
-    // Equipment
-    sec('Equipment');
-    var due = equipDueCount();
-    v.appendChild(row('🚜', 'Equipment & maintenance', due ? '' : (DB.equipment.length + ' assets'), function () { go('equipment'); }, due ? due + ' due' : ''));
-
     // Records & reports
     sec('Records & reports');
     v.appendChild(row('📈', 'Yield analytics', '', function () { requirePro(function () { go('analytics'); }); }, isPro() ? '' : 'Pro'));
     v.appendChild(row('📊', 'Lender summary', '', function () { requirePro(function () { go('lender'); }); }, isPro() ? '' : 'Pro'));
     v.appendChild(row('📤', 'Export records', '', openExportSheet));
 
-    // Marketplace
-    sec('Marketplace');
+    // Reference & marketplace
+    sec('Reference');
+    v.appendChild(row('🐛', 'Pest & disease library', '', function () { go('pests'); }));
     v.appendChild(row('🛒', 'Input suppliers', '', function () { go('suppliers'); }));
 
     // Settings
@@ -1310,7 +1306,7 @@
   function render() {
     normalizeDB();
     document.querySelectorAll('.nav-item').forEach(function (b) {
-      var moreish = ['suppliers', 'analytics', 'lender', 'equipment', 'more'].indexOf(state.view) >= 0;
+      var moreish = ['suppliers', 'analytics', 'lender', 'pests', 'more'].indexOf(state.view) >= 0;
       var match = b.dataset.view === state.view || (state.view === 'field' && b.dataset.view === 'fields') || (moreish && b.dataset.view === 'more');
       b.classList.toggle('on', match);
     });

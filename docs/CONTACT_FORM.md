@@ -34,7 +34,8 @@ Our form is rendered by JavaScript, so we use the standard SPA pattern:
    name and its fields with Netlify on every deploy. Do not remove it.
 
    ```html
-   <form name="contact" netlify netlify-honeypot="bot-field" hidden>
+   <form name="contact" data-netlify="true" netlify-honeypot="bot-field" hidden>
+     <input type="hidden" name="form-name" value="contact" />
      <input type="text" name="bot-field" />   <!-- spam honeypot -->
      <input type="text" name="topic" />
      <input type="email" name="email" />
@@ -42,6 +43,11 @@ Our form is rendered by JavaScript, so we use the standard SPA pattern:
      <input type="text" name="context" />      <!-- app version · region · plan -->
    </form>
    ```
+
+   > Use `data-netlify="true"` (not the bare `netlify` attribute) plus an
+   > explicit `form-name` hidden input — this is what reliably gets the form
+   > **registered** by Netlify's deploy scan. If `POST /` returns 404, the form
+   > isn't registered: confirm form detection is on and redeploy so it re-scans.
 
 2. **Live form + submit** — `openContactSheet()` in `js/app.js` renders the real
    form and submits via `fetch`:

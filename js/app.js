@@ -600,22 +600,10 @@
       var sub = (fld ? fld.tag + ' · ' : 'Whole farm · ') + fmtDate(e.dateISO) + (e.note ? ' · ' + esc(e.note) : '');
       v.appendChild(el('<div class="expense-row"><span class="ec" style="background:' + (CATCOLOR[e.category] || '#5e7080') + '"></span><div class="em"><div class="ename">' + esc(e.category) + '</div><div class="esub">' + sub + '</div></div><div class="eamt">' + money(e.amount) + '</div></div>'));
     });
-    // data & plan
-    v.appendChild(el('<div class="sec-h" style="margin-top:18px"><h3>Records &amp; plan</h3>' + (isPro() ? '<span class="link pro-badge">PRO</span>' : '') + '</div>'));
-    var links = el('<div class="acct-links acct-links-block">' +
-      '<button class="acct-link" id="mYa">Yield analytics' + (isPro() ? '' : ' · Pro') + '</button>' +
-      '<button class="acct-link" id="mLs">Lender summary' + (isPro() ? '' : ' · Pro') + '</button>' +
-      '<button class="acct-link" id="mExport">Export records (CSV / PDF)</button>' +
-      '<button class="acct-link" id="mRegion">Region: ' + esc(countryInfo().name) + '</button>' +
-      '<button class="acct-link" id="mPro">' + (isPro() ? 'Manage Pro' : 'Upgrade to Pro') + '</button>' +
-      '<button class="acct-link" id="mPriv">Privacy</button></div>');
-    v.appendChild(links);
-    $('#mYa', links).onclick = function () { requirePro(function () { go('analytics'); }); };
-    $('#mLs', links).onclick = function () { requirePro(function () { go('lender'); }); };
-    $('#mExport', links).onclick = openExportSheet;
-    $('#mRegion', links).onclick = openRegionSheet;
-    $('#mPro', links).onclick = openUpgradeSheet;
-    $('#mPriv', links).onclick = openPrivacy;
+    // pointer to reports/export (now centralised under More)
+    var rep = el('<button class="link-card" style="margin-top:16px"><span class="lc-ic">📊</span><div class="lc-t"><b>Reports &amp; export</b><span>Analytics, lender summary, CSV / PDF — in More</span></div><span class="lc-arrow">›</span></button>');
+    rep.addEventListener('click', function () { go('more'); });
+    v.appendChild(rep);
     setFab('+ Expense', openExpenseForm);
   }
 
@@ -989,6 +977,52 @@
     hideFab();
   }
 
+  /* ---- MORE (hub: account, records, settings) ---- */
+  function viewMore() {
+    homeTopbar();
+    var v = $('#view'); v.innerHTML = '';
+    function row(icon, label, value, fn, badge) {
+      var r = el('<button class="menu-row"><span class="m-ic">' + icon + '</span><span class="m-l">' + esc(label) + (badge ? ' <span class="m-badge">' + badge + '</span>' : '') + '</span>' + (value ? '<span class="m-v">' + esc(value) + '</span>' : '') + '<span class="m-ch">›</span></button>');
+      r.addEventListener('click', fn); return r;
+    }
+    function sec(t) { v.appendChild(el('<div class="menu-sec">' + t + '</div>')); }
+
+    // Account
+    sec('Account');
+    if (cloud.on) {
+      var initial = ((DB.settings.farmName || 'F').trim()[0] || 'F').toUpperCase();
+      var acc = el('<button class="menu-row acct-head"><span class="m-av">' + esc(initial) + '</span><span class="m-l"><b>' + esc(DB.settings.farmName || 'My farm') + '</b><span class="m-sub">' + esc(cloud.email || cloud.phone || 'Signed in') + '</span></span><span class="m-ch">›</span></button>');
+      acc.addEventListener('click', openAccountSheet); v.appendChild(acc);
+    } else if (cloudConfigured()) {
+      v.appendChild(row('☁️', 'Sign in & back up', '', promptSignIn));
+    } else {
+      v.appendChild(el('<div class="menu-row"><span class="m-av">' + esc(((DB.settings.farmName || 'F').trim()[0] || 'F').toUpperCase()) + '</span><span class="m-l"><b>' + esc(DB.settings.farmName || 'My farm') + '</b><span class="m-sub">Saved on this device</span></span></div>'));
+    }
+
+    // Records & reports
+    sec('Records & reports');
+    v.appendChild(row('📈', 'Yield analytics', '', function () { requirePro(function () { go('analytics'); }); }, isPro() ? '' : 'Pro'));
+    v.appendChild(row('📊', 'Lender summary', '', function () { requirePro(function () { go('lender'); }); }, isPro() ? '' : 'Pro'));
+    v.appendChild(row('📤', 'Export records', '', openExportSheet));
+
+    // Marketplace
+    sec('Marketplace');
+    v.appendChild(row('🛒', 'Input suppliers', '', function () { go('suppliers'); }));
+
+    // Settings
+    sec('Settings');
+    v.appendChild(row('🌍', 'Region & currency', countryInfo().name, openRegionSheet));
+    v.appendChild(row('⭐', 'Plan', isPro() ? 'Pro' : 'Free', openUpgradeSheet));
+    v.appendChild(row('🔒', 'Privacy', '', openPrivacy));
+
+    if (cloud.on) {
+      var out = el('<button class="btn-soft" id="moreOut" style="margin-top:16px">Sign out</button>');
+      out.addEventListener('click', function () { cloudSignOut(); toast('Signed out'); });
+      v.appendChild(out);
+    }
+    hideFab();
+  }
+
   /* ---------------- shared UI ---------------- */
   function emptyState(title, body) {
     return el('<div class="empty"><div class="eic"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#15A0A2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22V11"/><path d="M12 11c-4 0-6-2-6-6 4 0 6 2 6 6Z"/><path d="M12 9c0-3 2-5 5-5 0 3-2 5-5 5Z"/></svg></div><h3>' + esc(title) + '</h3><p>' + esc(body) + '</p></div>');
@@ -1110,8 +1144,8 @@
   function render() {
     normalizeDB();
     document.querySelectorAll('.nav-item').forEach(function (b) {
-      var moneyish = ['suppliers', 'analytics', 'lender'].indexOf(state.view) >= 0;
-      var match = b.dataset.view === state.view || (state.view === 'field' && b.dataset.view === 'fields') || (moneyish && b.dataset.view === 'money');
+      var moreish = ['suppliers', 'analytics', 'lender', 'more'].indexOf(state.view) >= 0;
+      var match = b.dataset.view === state.view || (state.view === 'field' && b.dataset.view === 'fields') || (moreish && b.dataset.view === 'more');
       b.classList.toggle('on', match);
     });
     if (state.view === 'fields') viewFields();
@@ -1122,6 +1156,7 @@
     else if (state.view === 'suppliers') viewSuppliers();
     else if (state.view === 'analytics') viewAnalytics();
     else if (state.view === 'lender') viewLender();
+    else if (state.view === 'more') viewMore();
     syncInstallBanner();
   }
   // global "Tasks" tab = all open work orders across fields

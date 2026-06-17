@@ -1,83 +1,99 @@
-/* MaintainFlow Ag — Cloud Functions (Flutterwave billing)
+/* MaintainFlow Ag — Cloud Functions (Stripe billing, Canada-based merchant)
  *
  * Two entry points:
- *   verifyPayment (callable) — the app calls this right after a successful
- *     Flutterwave checkout; we verify the transaction server-side and grant Pro.
- *   flwWebhook (HTTPS)       — Flutterwave calls this on charge.completed as a
- *     reliable backup; we verify and grant Pro.
+ *   createCheckoutSession (callable) — the app calls this; we create a hosted
+ *     Stripe Checkout session for the signed-in user and return its URL. The
+ *     app redirects the browser there.
+ *   stripeWebhook (HTTPS)            — Stripe calls this on completed payments;
+ *     we verify the signature, then grant Pro. This is the source of truth.
  *
  * Pro is stored at entitlements/{uid} which the client can READ but NOT WRITE
  * (see firestore.rules), so Pro is enforceable.
  *
  * Secrets (set with `firebase functions:secrets:set`):
- *   FLW_SECRET_KEY    — Flutterwave secret key (server only, never in the app)
- *   FLW_WEBHOOK_HASH  — the "Secret hash" you set in the Flutterwave dashboard
+ *   STRIPE_SECRET_KEY      — Stripe secret key (server only, never in the app)
+ *   STRIPE_WEBHOOK_SECRET  — the signing secret from the Stripe webhook endpoint
  * Params (optional, defaults shown):
- *   PRO_PRICE=49  PRO_CURRENCY=BWP
+ *   PRO_PRICE_CENTS=499  PRO_CURRENCY=usd   (amount charged per period)
  */
 const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https');
-const { defineSecret, defineString } = require('firebase-functions/params');
+const { defineSecret, defineInt, defineString } = require('firebase-functions/params');
 const admin = require('firebase-admin');
+const Stripe = require('stripe');
 
 admin.initializeApp();
 const db = admin.firestore();
 
-const FLW_SECRET = defineSecret('FLW_SECRET_KEY');
-const FLW_HASH = defineSecret('FLW_WEBHOOK_HASH');
-const PRO_PRICE = defineString('PRO_PRICE', { default: '49' });
-const PRO_CURRENCY = defineString('PRO_CURRENCY', { default: 'BWP' });
+const STRIPE_SECRET = defineSecret('STRIPE_SECRET_KEY');
+const STRIPE_WEBHOOK_SECRET = defineSecret('STRIPE_WEBHOOK_SECRET');
+const PRO_PRICE_CENTS = defineInt('PRO_PRICE_CENTS', { default: 499 });
+const PRO_CURRENCY = defineString('PRO_CURRENCY', { default: 'usd' });
 const PRO_DAYS = 30;
+const PRO_NAME = 'MaintainFlow Pro';
 
-async function grantPro(uid, txId) {
-  const ref = db.collection('entitlements').doc(String(uid));
-  const snap = await ref.get();
+function stripeClient() { return Stripe(STRIPE_SECRET.value()); }
+
+// Grant (or extend) Pro by PRO_DAYS from now or from the current expiry.
+async function grantPro(uid, ref) {
+  const eref = db.collection('entitlements').doc(String(uid));
+  const snap = await eref.get();
   const now = Date.now();
   const current = snap.exists && snap.data().proUntil && snap.data().proUntil > now ? snap.data().proUntil : now;
   const proUntil = current + PRO_DAYS * 24 * 60 * 60 * 1000;
-  await ref.set({ pro: true, plan: 'pro-monthly', proUntil: proUntil, lastTx: txId || null, updatedAt: now }, { merge: true });
+  await eref.set({ pro: true, plan: 'pro-monthly', proUntil: proUntil, lastTx: ref || null, updatedAt: now }, { merge: true });
   return proUntil;
 }
 
-async function flwVerify(transactionId, secret) {
-  const res = await fetch('https://api.flutterwave.com/v3/transactions/' + encodeURIComponent(transactionId) + '/verify', {
-    headers: { Authorization: 'Bearer ' + secret }
-  });
-  return res.json();
-}
-
-function paymentOk(json) {
-  const d = json && json.data;
-  return !!(json && json.status === 'success' && d && d.status === 'successful' &&
-    Number(d.amount) >= Number(PRO_PRICE.value()) && String(d.currency) === String(PRO_CURRENCY.value()));
-}
-
-// Called by the app immediately after checkout. Trusts the authenticated uid.
-exports.verifyPayment = onCall({ secrets: [FLW_SECRET], cors: true }, async (req) => {
+// Called by the app. Creates a hosted Checkout session tied to the auth'd uid.
+exports.createCheckoutSession = onCall({ secrets: [STRIPE_SECRET], cors: true }, async (req) => {
   if (!req.auth) throw new HttpsError('unauthenticated', 'Please sign in.');
-  const txId = req.data && (req.data.transaction_id || req.data.transactionId);
-  if (!txId) throw new HttpsError('invalid-argument', 'transaction_id is required.');
-  const json = await flwVerify(txId, FLW_SECRET.value());
-  if (!paymentOk(json)) throw new HttpsError('failed-precondition', 'Payment could not be verified.');
-  const proUntil = await grantPro(req.auth.uid, txId);
-  return { pro: true, proUntil: proUntil };
+  const uid = req.auth.uid;
+  const origin = (req.data && req.data.origin) || '';
+  if (!/^https?:\/\//.test(origin)) throw new HttpsError('invalid-argument', 'A valid origin is required.');
+  const stripe = stripeClient();
+  const session = await stripe.checkout.sessions.create({
+    mode: 'payment',
+    payment_method_types: ['card'],
+    line_items: [{
+      quantity: 1,
+      price_data: {
+        currency: PRO_CURRENCY.value(),
+        unit_amount: PRO_PRICE_CENTS.value(),
+        product_data: { name: PRO_NAME, description: PRO_DAYS + ' days of Pro' }
+      }
+    }],
+    client_reference_id: uid,
+    metadata: { uid: uid },
+    success_url: origin + '/?pro=1',
+    cancel_url: origin + '/?pro=cancel'
+  });
+  return { url: session.url };
 });
 
-// Flutterwave server-to-server webhook (reliable backup). uid travels in meta.
-exports.flwWebhook = onRequest({ secrets: [FLW_SECRET, FLW_HASH] }, async (request, response) => {
-  const sig = request.headers['verif-hash'];
-  if (!sig || sig !== FLW_HASH.value()) { response.status(401).send('invalid signature'); return; }
+// Stripe server-to-server webhook (source of truth). Signature-verified.
+exports.stripeWebhook = onRequest({ secrets: [STRIPE_SECRET, STRIPE_WEBHOOK_SECRET] }, async (request, response) => {
+  const stripe = stripeClient();
+  let event;
   try {
-    const ev = request.body || {};
-    const data = ev.data || {};
-    if ((ev.event === 'charge.completed' || ev.type === 'charge.completed') && data.status === 'successful' && data.id) {
-      const json = await flwVerify(data.id, FLW_SECRET.value());
-      const d = json && json.data;
-      const uid = (d && d.meta && (d.meta.uid || d.meta.consumer_id)) || (data.meta && data.meta.uid);
-      if (uid && paymentOk(json)) await grantPro(uid, d.id);
+    event = stripe.webhooks.constructEvent(
+      request.rawBody, request.headers['stripe-signature'], STRIPE_WEBHOOK_SECRET.value()
+    );
+  } catch (e) {
+    console.error('Webhook signature verification failed:', e.message);
+    response.status(400).send('invalid signature');
+    return;
+  }
+  try {
+    if (event.type === 'checkout.session.completed') {
+      const s = event.data.object;
+      const uid = s.client_reference_id || (s.metadata && s.metadata.uid);
+      if (uid && (s.payment_status === 'paid' || s.status === 'complete')) {
+        await grantPro(uid, s.payment_intent || s.id);
+      }
     }
     response.status(200).send('ok');
   } catch (e) {
-    console.error('flwWebhook error', e);
-    response.status(200).send('ok'); // ack so Flutterwave doesn't retry-storm; check logs
+    console.error('stripeWebhook error', e);
+    response.status(200).send('ok'); // ack so Stripe doesn't retry-storm; check logs
   }
 });

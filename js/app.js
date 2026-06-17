@@ -28,7 +28,7 @@
   function addDays(n) { var d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); }
   function iso(y, m, d) { return new Date(y, m - 1, d).toISOString().slice(0, 10); }
   var YR = today().getFullYear();
-  var APP_VERSION = '1.2.0';
+  var APP_VERSION = '1.3.0';
   var CONTACT_EMAIL = 'info@maintainflow.pro';
   var CONTACT_TOPICS = ['Bug report', 'Feature request', 'Billing & Pro', 'Account & login', 'Partnership / sales', 'Something else'];
 
@@ -799,7 +799,7 @@
     if (!DB.settings.plan) DB.settings.plan = 'free';
     if (!DB.settings.country) DB.settings.country = detectCountry();
   }
-  function billingConfigured() { var b = window.MFAG_BILLING; return !!(b && b.flwPublicKey && b.flwPublicKey !== 'REPLACE_ME'); }
+  function billingConfigured() { var b = window.MFAG_BILLING; return !!(b && b.provider === 'stripe' && b.enabled); }
   function isPro() {
     var ent = cloud.entitlement;
     if (ent && ent.pro && (!ent.proUntil || ent.proUntil > Date.now())) return true;   // server-verified
@@ -808,50 +808,39 @@
   }
   function requirePro(cb) { if (isPro()) return cb(); openUpgradeSheet(); }
 
-  function loadFlutterwave(cb) {
-    if (window.FlutterwaveCheckout) return cb();
-    var s = document.createElement('script'); s.src = 'https://checkout.flutterwave.com/v3.js';
-    s.onload = function () { cb(); }; s.onerror = function () { cb(new Error('flw')); };
-    document.head.appendChild(s);
-  }
   function loadFunctionsSDK(cb) {
     if (window.firebase && firebase.functions) return cb();
     var s = document.createElement('script'); s.src = 'https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js';
     s.onload = function () { cb(); }; s.onerror = function () { cb(new Error('fn')); };
     document.head.appendChild(s);
   }
+  // Stripe Checkout: ask the Cloud Function for a hosted session URL, then redirect.
   function startCheckout() {
     if (!cloud.on) { promptSignIn(); return; }
-    var b = window.MFAG_BILLING;
-    loadFlutterwave(function (err) {
-      if (err || !window.FlutterwaveCheckout) { toast('Couldn’t load payment — check your connection.'); return; }
-      FlutterwaveCheckout({
-        public_key: b.flwPublicKey,
-        tx_ref: 'mfag-' + cloud.uid + '-' + Date.now(),
-        amount: b.priceBWP, currency: b.currency || 'BWP',
-        payment_options: 'card,mobilemoneybw,mobilemoney,ussd,banktransfer',
-        customer: { email: cloud.email || (cloud.uid + '@maintainflow.app'), phonenumber: cloud.phone || '', name: (DB.settings && DB.settings.farmName) || 'Farmer' },
-        meta: { uid: cloud.uid },
-        customizations: { title: 'MaintainFlow Pro', description: (b.days || 30) + ' days of Pro' },
-        callback: function (resp) { onPaid(resp); },
-        onclose: function () {}
-      });
-    });
-  }
-  function onPaid(resp) {
-    var ok = resp && (resp.status === 'successful' || resp.status === 'completed');
-    var txId = resp && (resp.transaction_id || resp.id);
-    if (!ok || !txId) return;
-    toast('Confirming payment…');
+    toast('Opening secure checkout…');
     loadFunctionsSDK(function (err) {
-      if (err || !(window.firebase && firebase.functions)) { toast('Payment received — Pro will activate shortly.'); return; }
+      if (err || !(window.firebase && firebase.functions)) { toast('Couldn’t reach checkout — check your connection.'); return; }
       try {
         var fns = firebase.app().functions((window.MFAG_BILLING && window.MFAG_BILLING.functionsRegion) || 'us-central1');
-        fns.httpsCallable('verifyPayment')({ transaction_id: txId })
-          .then(function () { closeModal(); render(); toast('Pro activated 🎉'); })
-          .catch(function () { toast('Payment received — activating shortly…'); });
-      } catch (e) { toast('Payment received — activating shortly…'); }
+        fns.httpsCallable('createCheckoutSession')({ origin: location.origin })
+          .then(function (res) {
+            var url = res && res.data && res.data.url;
+            if (url) { window.location.assign(url); }
+            else { toast('Couldn’t start checkout. Please try again.'); }
+          })
+          .catch(function () { toast('Couldn’t start checkout. Please try again.'); });
+      } catch (e) { toast('Couldn’t start checkout. Please try again.'); }
     });
+  }
+  // After returning from Stripe Checkout (success_url = /?pro=1), entitlement
+  // is granted by the webhook; the entitlements snapshot flips Pro on shortly.
+  function handleCheckoutReturn() {
+    var q = new URLSearchParams(location.search);
+    var pro = q.get('pro');
+    if (!pro) return;
+    history.replaceState(null, '', location.pathname);  // clean the URL
+    if (pro === '1') toast('Payment received — activating Pro…');
+    else if (pro === 'cancel') toast('Checkout cancelled');
   }
 
   function openYieldForm(fieldId, existing) {
@@ -897,11 +886,11 @@
     if (pro) {
       var until = (cloud.entitlement && cloud.entitlement.proUntil) ? ' · valid until ' + fmtDate(new Date(cloud.entitlement.proUntil).toISOString().slice(0, 10)) : '';
       body = '<div class="pro-on">✓ Pro is active' + until + '</div>' +
-        (billingConfigured() ? '<button class="btn-soft" id="proRenew">Extend Pro · ' + symFor(b.currency) + ' ' + b.priceBWP + '</button>' : '<button class="btn-soft" id="proOff">Switch back to Free</button>');
+        (billingConfigured() ? '<button class="btn-soft" id="proRenew">Extend Pro · ' + esc(b.displayPrice || '') + '</button>' : '<button class="btn-soft" id="proOff">Switch back to Free</button>');
     } else if (billingConfigured()) {
       body = (!cloud.on)
         ? '<button class="btn-primary" id="proSignin">Sign in to upgrade</button><p class="hint" style="text-align:center;margin-top:8px">Pro is tied to your account so it works across devices.</p>'
-        : '<button class="btn-primary" id="proPay">Get Pro · ' + symFor(b.currency) + ' ' + b.priceBWP + ' / ' + (b.days || 30) + ' days</button><p class="hint" style="text-align:center;margin-top:8px">Pay by card or mobile money via Flutterwave.</p>';
+        : '<button class="btn-primary" id="proPay">Get Pro · ' + esc(b.displayPrice || '') + '</button><p class="hint" style="text-align:center;margin-top:8px">Secure card payment via Stripe.</p>';
     } else {
       body = '<button class="btn-primary" id="proGo">Activate Pro</button><p class="hint" style="text-align:center;margin-top:8px">Billing isn’t connected yet — this enables Pro for evaluation.</p>';
     }
@@ -1836,6 +1825,7 @@
     if (p && ['fields', 'tasks', 'money', 'pests'].indexOf(p) >= 0) state.view = p;
     /* iOS install banner (no beforeinstallprompt on iOS) */
     if (isIOS() && !isStandalone() && DB && !DB.dismissInstall) { setTimeout(syncInstallBanner, 1200); }
+    handleCheckoutReturn();   // toast after returning from Stripe Checkout
     render();
     ensureWeather();   // refresh local weather if a farm location is known
     if (DB && DB.settings && !DB.settings.consent) setTimeout(showConsent, 400);

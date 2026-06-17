@@ -48,7 +48,10 @@ Deploy prints the function URLs — note the **`stripeWebhook`** URL, e.g.
 ## 3. Add the Stripe webhook + its signing secret
 Stripe Dashboard → **Developers → Webhooks → Add endpoint**:
 - **Endpoint URL** = the `stripeWebhook` URL from step 2.
-- **Events to send** = `checkout.session.completed`.
+- **Events to send** (select all three):
+  - `checkout.session.completed` — grants Pro on payment
+  - `charge.refunded` — revokes Pro on refund
+  - `charge.dispute.created` — revokes Pro on chargeback/dispute
 - Save, then copy the endpoint's **Signing secret** (`whsec_…`).
 
 Set it and redeploy so the webhook can verify signatures:

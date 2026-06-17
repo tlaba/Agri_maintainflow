@@ -4,8 +4,9 @@
  *   createCheckoutSession (callable) — the app calls this; we create a hosted
  *     Stripe Checkout session for the signed-in user and return its URL. The
  *     app redirects the browser there.
- *   stripeWebhook (HTTPS)            — Stripe calls this on completed payments;
- *     we verify the signature, then grant Pro. This is the source of truth.
+ *   stripeWebhook (HTTPS)            — Stripe calls this; we verify the
+ *     signature, then GRANT Pro on payment and REVOKE Pro on refund/dispute.
+ *     This is the source of truth.
  *
  * Pro is stored at entitlements/{uid} which the client can READ but NOT WRITE
  * (see firestore.rules), so Pro is enforceable.
@@ -44,6 +45,24 @@ async function grantPro(uid, ref) {
   return proUntil;
 }
 
+// Revoke Pro immediately (refund or dispute).
+async function revokePro(uid, ref) {
+  if (!uid) return;
+  await db.collection('entitlements').doc(String(uid)).set(
+    { pro: false, plan: 'free', proUntil: Date.now(), lastTx: ref || null, revokedAt: Date.now() },
+    { merge: true }
+  );
+}
+
+// Resolve the uid behind a charge/dispute via the PaymentIntent metadata we
+// stamped at checkout (fall back to the object's own metadata if present).
+async function uidFromPaymentIntent(stripe, piId, fallbackMeta) {
+  if (fallbackMeta && fallbackMeta.uid) return fallbackMeta.uid;
+  if (!piId) return null;
+  try { const pi = await stripe.paymentIntents.retrieve(piId); return (pi.metadata && pi.metadata.uid) || null; }
+  catch (e) { return null; }
+}
+
 // Called by the app. Creates a hosted Checkout session tied to the auth'd uid.
 exports.createCheckoutSession = onCall({ secrets: [STRIPE_SECRET], cors: true }, async (req) => {
   if (!req.auth) throw new HttpsError('unauthenticated', 'Please sign in.');
@@ -64,6 +83,7 @@ exports.createCheckoutSession = onCall({ secrets: [STRIPE_SECRET], cors: true },
     }],
     client_reference_id: uid,
     metadata: { uid: uid },
+    payment_intent_data: { metadata: { uid: uid } },  // so refunds/disputes trace back to the uid
     success_url: origin + '/?pro=1',
     cancel_url: origin + '/?pro=cancel'
   });
@@ -90,6 +110,15 @@ exports.stripeWebhook = onRequest({ secrets: [STRIPE_SECRET, STRIPE_WEBHOOK_SECR
       if (uid && (s.payment_status === 'paid' || s.status === 'complete')) {
         await grantPro(uid, s.payment_intent || s.id);
       }
+    } else if (event.type === 'charge.refunded') {
+      // Any refund (full or partial) revokes Pro.
+      const charge = event.data.object;
+      const uid = await uidFromPaymentIntent(stripe, charge.payment_intent, charge.metadata);
+      await revokePro(uid, charge.id);
+    } else if (event.type === 'charge.dispute.created') {
+      const dispute = event.data.object;
+      const uid = await uidFromPaymentIntent(stripe, dispute.payment_intent, dispute.metadata);
+      await revokePro(uid, dispute.id);
     }
     response.status(200).send('ok');
   } catch (e) {

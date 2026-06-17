@@ -18,7 +18,7 @@
    =================================================================== */
 window.MFAG_BILLING = {
   provider: "stripe",
-  enabled: false,                     // set true AFTER the Cloud Function is deployed & live
+  enabled: true,                      // billing is live (Cloud Function deployed)
   displayPrice: "US$4.99 / 30 days",  // button label only; real amount lives server-side
   // Default callable region is us-central1; set if you deployed elsewhere.
   functionsRegion: "us-central1"

@@ -28,7 +28,7 @@
   function addDays(n) { var d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); }
   function iso(y, m, d) { return new Date(y, m - 1, d).toISOString().slice(0, 10); }
   var YR = today().getFullYear();
-  var APP_VERSION = '1.3.2';
+  var APP_VERSION = '1.4.0';
   var CONTACT_EMAIL = 'info@maintainflow.pro';
   var CONTACT_TOPICS = ['Bug report', 'Feature request', 'Billing & Pro', 'Account & login', 'Partnership / sales', 'Something else'];
 
@@ -53,6 +53,25 @@
         { id: f(), name: 'Massey Ferguson 375', kind: 'tractor', make: '4WD · 75 hp', hours: 3120, note: '', lastServiceISO: addDays(-78), intervalDays: 90, logs: [] },
         { id: f(), name: 'Boom sprayer', kind: 'sprayer', make: '600 L trailed', hours: 0, note: 'Calibrate before season', lastServiceISO: addDays(-200), intervalDays: 180, logs: [] },
         { id: f(), name: 'Borehole pump', kind: 'pump', make: 'Submersible 2.2 kW', hours: 0, note: '', lastServiceISO: addDays(-30), intervalDays: 180, logs: [] }
+      ],
+      farmMode: 'crops',
+      herds: [
+        { id: f(), tag: 'HRD-01', species: 'cattle', breed: 'Tswana', count: 34, note: '', status: 'healthy', acquiredISO: iso(YR - 2, 4, 1), lastHealthISO: addDays(-40), healthIntervalDays: 90,
+          logs: [
+            { id: f(), dateISO: addDays(-60), type: 'Birth', qty: 4, note: 'Calving' },
+            { id: f(), dateISO: addDays(-40), type: 'Treatment', cost: 920, note: 'Dipping + vaccine' },
+            { id: f(), dateISO: addDays(-20), type: 'Weigh-in', weightKg: 280, note: 'Sample of 10' }
+          ] },
+        { id: f(), tag: 'HRD-02', species: 'goats', breed: 'Boer', count: 58, note: 'Kidding season soon', status: 'watch', acquiredISO: iso(YR - 1, 6, 1), lastHealthISO: addDays(-120), healthIntervalDays: 90,
+          logs: [
+            { id: f(), dateISO: addDays(-30), type: 'Sale', qty: 6, income: 4200, note: 'Sold to butcher' },
+            { id: f(), dateISO: addDays(-15), type: 'Death', qty: 2, note: 'Pneumonia' }
+          ] },
+        { id: f(), tag: 'HRD-03', species: 'poultry', breed: 'Layers', count: 120, note: '', status: 'healthy', acquiredISO: addDays(-90), lastHealthISO: addDays(-10), healthIntervalDays: 30,
+          logs: [
+            { id: f(), dateISO: addDays(-2), type: 'Production', prodQty: 96, prodUnit: 'eggs', note: '' },
+            { id: f(), dateISO: addDays(-1), type: 'Production', prodQty: 104, prodUnit: 'eggs', note: '' }
+          ] }
       ]
     };
   }
@@ -174,7 +193,7 @@
     if (!DB.tasks || !DB.tasks.length) { /* keep */ }
   }
 
-  var state = { view: 'fields', fieldId: null, taskFilter: 'All' };
+  var state = { view: 'fields', fieldId: null, herdId: null, taskFilter: 'All' };
 
   /* ===================================================================
      VIEWS
@@ -194,6 +213,8 @@
   function viewFields() {
     homeTopbar();
     var v = $('#view'); v.innerHTML = '';
+    v.appendChild(farmModeToggle());
+    if (DB.farmMode === 'livestock') { renderLivestockHome(v); return; }
     // frost risk alert — only when real weather data shows a low ≤ 3°C
     var frost = frostAlertEl(); if (frost) v.appendChild(frost);
     // back-up / sign-in prompt for guests (cloud available but not signed in)
@@ -789,6 +810,256 @@
   }
 
   /* ===================================================================
+     LIVESTOCK
+     =================================================================== */
+  var SPECIES = {
+    cattle:  { e: '🐄', label: 'Cattle' },
+    goats:   { e: '🐐', label: 'Goats' },
+    sheep:   { e: '🐑', label: 'Sheep' },
+    poultry: { e: '🐔', label: 'Poultry' },
+    pigs:    { e: '🐖', label: 'Pigs' },
+    other:   { e: '🐾', label: 'Other' }
+  };
+  var HERD_EVENTS = ['Birth', 'Death', 'Sale', 'Purchase', 'Treatment', 'Weigh-in', 'Production', 'Note'];
+  var HEALTH_INTERVALS = [[30, 'Monthly'], [90, 'Every 3 months'], [180, 'Every 6 months'], [365, 'Yearly']];
+  function speciesOf(k) { return SPECIES[k] || SPECIES.other; }
+  function herdById(id) { return (DB.herds || []).filter(function (h) { return h.id === id; })[0]; }
+  function totalHead() { return (DB.herds || []).reduce(function (s, h) { return s + (+h.count || 0); }, 0); }
+  function nextHerdHealthISO(h) {
+    var base = h.lastHealthISO || addDays(0);
+    var d = new Date(base + 'T00:00'); d.setDate(d.getDate() + (h.healthIntervalDays || 90));
+    return d.toISOString().slice(0, 10);
+  }
+  function herdHealthState(h) {
+    if (!h.healthIntervalDays) return { st: 'ok', days: 9999 };
+    var days = daysBetween(nextHerdHealthISO(h));
+    if (days < 0) return { st: 'over', days: days };
+    if (days <= 14) return { st: 'soon', days: days };
+    return { st: 'ok', days: days };
+  }
+  function herdsHealthDue() { return (DB.herds || []).filter(function (h) { return herdHealthState(h).st !== 'ok'; }).length; }
+  function herdStats(h) {
+    var logs = h.logs || [], births = 0, deaths = 0, sold = 0, bought = 0, income = 0, cost = 0, weights = [], prod = [];
+    logs.forEach(function (l) {
+      if (l.type === 'Birth') births += (+l.qty || 0);
+      else if (l.type === 'Death') deaths += (+l.qty || 0);
+      else if (l.type === 'Sale') { sold += (+l.qty || 0); income += (+l.income || 0); }
+      else if (l.type === 'Purchase') bought += (+l.qty || 0);
+      if (l.cost) cost += (+l.cost || 0);
+      if (l.type === 'Weigh-in' && l.weightKg) weights.push(l);
+      if (l.type === 'Production' && l.prodQty) prod.push(l);
+    });
+    weights.sort(function (a, b) { return a.dateISO < b.dateISO ? -1 : 1; });
+    prod.sort(function (a, b) { return a.dateISO < b.dateISO ? -1 : 1; });
+    var exposure = (+h.count || 0) + deaths + sold;
+    return {
+      births: births, deaths: deaths, sold: sold, bought: bought, income: income, cost: cost,
+      mortality: exposure ? Math.round(deaths / exposure * 100) : 0,
+      latestW: weights.length ? weights[weights.length - 1] : null,
+      prevW: weights.length > 1 ? weights[weights.length - 2] : null,
+      weights: weights, prod: prod
+    };
+  }
+
+  function farmModeToggle() {
+    var wrap = el('<div class="mode-toggle">' +
+      '<button data-m="crops"' + (DB.farmMode !== 'livestock' ? ' class="on"' : '') + '>🌱 Crops</button>' +
+      '<button data-m="livestock"' + (DB.farmMode === 'livestock' ? ' class="on"' : '') + '>🐄 Livestock</button></div>');
+    wrap.querySelectorAll('button').forEach(function (b) {
+      b.addEventListener('click', function () { if (DB.farmMode !== b.dataset.m) { DB.farmMode = b.dataset.m; save(); render(); } });
+    });
+    return wrap;
+  }
+
+  function renderLivestockHome(v) {
+    var due = herdsHealthDue();
+    v.appendChild(el('<div class="kpis">' +
+      '<div class="kpi"><div class="v">' + totalHead() + '</div><div class="l">Animals</div></div>' +
+      '<div class="kpi"><div class="v">' + DB.herds.length + '</div><div class="l">Herds</div></div>' +
+      '<div class="kpi"><div class="v">' + due + '</div><div class="l">Health due</div></div></div>'));
+    v.appendChild(el('<div class="sec-h"><h3>Your herds</h3><span class="link" id="addHerd2">+ Add herd</span></div>'));
+    $('#addHerd2', v).addEventListener('click', function () { openHerdForm(); });
+    if (!DB.herds.length) {
+      v.appendChild(emptyState('No herds yet', 'Add a herd of cattle, goats or poultry to track headcount, health, weights and production.'));
+    } else {
+      DB.herds.forEach(function (h) { v.appendChild(herdCard(h)); });
+    }
+    setFab('+ Herd', function () { openHerdForm(); });
+  }
+
+  function herdCard(h) {
+    var sp = speciesOf(h.species), hs = herdHealthState(h);
+    var statusClass = 'healthy', statusLabel = 'Healthy';
+    if (hs.st === 'over') { statusClass = 'over'; statusLabel = 'Health overdue'; }
+    else if (hs.st === 'soon') { statusClass = 'watch'; statusLabel = 'Health due'; }
+    else if (h.status === 'watch') { statusClass = 'watch'; statusLabel = 'Watch'; }
+    var hIcon = hs.st === 'over' ? 'over' : (hs.st === 'soon' ? 'due' : 'sched');
+    var hTxt = h.healthIntervalDays
+      ? (hs.st === 'over' ? 'Health overdue ' + Math.abs(hs.days) + 'd' : hs.st === 'soon' ? (hs.days === 0 ? 'Health due today' : 'Health due in ' + hs.days + 'd') : 'Next health ' + fmtDate(nextHerdHealthISO(h)))
+      : 'No health schedule';
+    var card = el('<button class="field"><span class="crop-ic" style="background:var(--green-soft)">' + sp.e + '</span>' +
+      '<div class="meta"><span class="tag">' + esc(h.tag) + '</span>' +
+      '<div class="name">' + sp.label + (h.breed ? ' · ' + esc(h.breed) : '') + '</div>' +
+      '<div class="sub">' + (+h.count || 0) + ' head' + (h.acquiredISO ? ' · since ' + fmtDate(h.acquiredISO) : '') + '</div>' +
+      '<div class="next">' + dueIcon(hIcon) + hTxt + '</div></div>' +
+      '<span class="status s-' + statusClass + '">' + statusLabel + '</span></button>');
+    card.addEventListener('click', function () { state.herdId = h.id; go('herd'); });
+    return card;
+  }
+
+  function viewHerd() {
+    var h = herdById(state.herdId);
+    if (!h) { go('fields'); return; }
+    var sp = speciesOf(h.species), st = herdStats(h), hs = herdHealthState(h);
+    backTopbar(h.tag + ' · ' + sp.label, (h.breed ? esc(h.breed) + ' · ' : '') + (+h.count || 0) + ' head');
+    var v = $('#view'); v.innerHTML = '';
+    v.appendChild(el('<div class="mini-kpis">' +
+      '<div><div class="v">' + (+h.count || 0) + '</div><div class="l">Head</div></div>' +
+      '<div><div class="v">' + st.mortality + '%</div><div class="l">Mortality</div></div>' +
+      '<div><div class="v">' + (st.latestW ? Math.round(st.latestW.weightKg) + 'kg' : '—') + '</div><div class="l">Avg weight</div></div></div>'));
+    var healthTxt = h.healthIntervalDays
+      ? (hs.st === 'over' ? 'Treatment overdue ' + Math.abs(hs.days) + 'd' : hs.st === 'soon' ? ('Treatment due' + (hs.days === 0 ? ' today' : ' in ' + hs.days + 'd')) : 'Next treatment ' + fmtDate(nextHerdHealthISO(h)))
+      : 'No health schedule set';
+    var hr = el('<div class="loc-row"><span class="loc-ic">💉</span><div class="loc-meta"><b>Health</b><span>' + esc(healthTxt) + '</span></div><button class="loc-link" id="hTreat">Log treatment</button></div>');
+    $('#hTreat', hr).addEventListener('click', function () { openHerdLog(h, 'Treatment'); });
+    v.appendChild(hr);
+
+    v.appendChild(el('<div class="sec-h"><h3>This herd</h3><span class="link" id="hEdit">Edit</span></div>'));
+    $('#hEdit', v).addEventListener('click', function () { openHerdForm(h); });
+    var chips = '<span>+' + st.births + ' births</span><span>−' + st.deaths + ' deaths</span><span>−' + st.sold + ' sold</span>';
+    if (st.bought) chips += '<span>+' + st.bought + ' bought</span>';
+    if (st.income) chips += '<span>' + money(st.income) + ' income</span>';
+    if (st.cost) chips += '<span>' + money(st.cost) + ' upkeep</span>';
+    v.appendChild(el('<div class="herd-stats">' + chips + '</div>'));
+
+    if (st.latestW) {
+      var wch = st.prevW ? (st.latestW.weightKg - st.prevW.weightKg) : 0;
+      var wtxt = 'Latest ' + Math.round(st.latestW.weightKg) + ' kg avg (' + fmtDate(st.latestW.dateISO) + ')' + (wch ? ' · ' + (wch > 0 ? '▲ +' : '▼ ') + Math.round(wch) + ' kg' : '');
+      v.appendChild(el('<div class="loc-row" style="margin-top:10px"><span class="loc-ic">⚖️</span><div class="loc-meta"><b>Weight</b><span>' + esc(wtxt) + '</span></div></div>'));
+    }
+    if (st.prod.length) {
+      var last = st.prod[st.prod.length - 1];
+      var recent = st.prod.slice(-7), sum = recent.reduce(function (a, p) { return a + (+p.prodQty || 0); }, 0);
+      var unit = last.prodUnit || '';
+      v.appendChild(el('<div class="loc-row" style="margin-top:10px"><span class="loc-ic">🥚</span><div class="loc-meta"><b>Production</b><span>Last ' + last.prodQty + ' ' + esc(unit) + ' · ' + Math.round(sum / recent.length) + ' ' + esc(unit) + '/day avg</span></div></div>'));
+    }
+
+    v.appendChild(el('<div class="sec-h" style="margin-top:14px"><h3>Recent activity</h3></div>'));
+    var logs = (h.logs || []).slice().sort(function (a, b) { return a.dateISO < b.dateISO ? 1 : -1; }).slice(0, 14);
+    if (!logs.length) v.appendChild(emptyState('No records yet', 'Log births, deaths, treatments, weigh-ins or production.'));
+    else logs.forEach(function (l) { v.appendChild(herdLogRow(l)); });
+    setFab('+ Log', function () { openHerdLog(h); });
+  }
+
+  function herdLogRow(l) {
+    var sign = (l.type === 'Birth' || l.type === 'Purchase') ? '+' : ((l.type === 'Death' || l.type === 'Sale') ? '−' : '');
+    var detail = fmtDate(l.dateISO);
+    if (l.qty && ['Birth', 'Death', 'Sale', 'Purchase'].indexOf(l.type) >= 0) detail += ' · ' + sign + l.qty + ' head';
+    if (l.type === 'Weigh-in' && l.weightKg) detail += ' · ' + Math.round(l.weightKg) + ' kg avg';
+    if (l.type === 'Production' && l.prodQty) detail += ' · ' + l.prodQty + ' ' + esc(l.prodUnit || '');
+    if (l.note) detail += ' · ' + esc(l.note);
+    var amt = l.income ? money(l.income) : (l.cost ? '−' + money(l.cost) : '');
+    return el('<div class="hist-row"><div><b>' + esc(l.type) + '</b><span>' + detail + '</span></div>' + (amt ? '<span class="hist-cost">' + amt + '</span>' : '') + '</div>');
+  }
+
+  function openHerdForm(existing) {
+    var ed = existing && existing.id ? existing : null;
+    var nextTag = 'HRD-' + String((DB.herds.length || 0) + 1).padStart(2, '0');
+    var host = openModal(
+      '<div class="modal-head"><h3>' + (ed ? 'Edit herd' : 'New herd') + '</h3><button class="x" id="mx">&times;</button></div>' +
+      '<div class="field-group"><label>Species</label><div class="seg" id="spSeg"></div></div>' +
+      '<div class="row2"><div class="field-group"><label>Herd tag</label><input id="hTag" value="' + esc(ed ? ed.tag : nextTag) + '"></div>' +
+      '<div class="field-group"><label>Head count</label><input id="hCount" type="number" inputmode="numeric" value="' + (ed ? ed.count : '') + '" placeholder="0"></div></div>' +
+      '<div class="field-group"><label>Breed (optional)</label><input id="hBreed" value="' + esc(ed ? ed.breed : '') + '" placeholder="e.g. Tswana, Boer"></div>' +
+      '<div class="row2"><div class="field-group"><label>Acquired / started</label><input id="hAcq" type="date" value="' + (ed ? (ed.acquiredISO || addDays(0)) : addDays(0)) + '"></div>' +
+      '<div class="field-group"><label>Health check every</label><select id="hInt">' + HEALTH_INTERVALS.map(function (i) { return '<option value="' + i[0] + '"' + (ed && ed.healthIntervalDays === i[0] ? ' selected' : (!ed && i[0] === 90 ? ' selected' : '')) + '>' + i[1] + '</option>'; }).join('') + '</select></div></div>' +
+      '<div class="field-group"><label>Last treated / vaccinated</label><input id="hLast" type="date" value="' + (ed ? (ed.lastHealthISO || addDays(0)) : addDays(0)) + '"></div>' +
+      '<div class="field-group"><label>Note (optional)</label><input id="hNote" value="' + esc(ed ? ed.note : '') + '" placeholder="e.g. kidding season soon"></div>' +
+      '<button class="btn-primary" id="hSave">' + (ed ? 'Save changes' : 'Add herd') + '</button>' +
+      (ed ? '<button class="btn-danger" id="hDel">Delete herd</button>' : ''));
+    var species = ed ? ed.species : 'cattle';
+    var seg = $('#spSeg', host);
+    Object.keys(SPECIES).forEach(function (key) {
+      var b = el('<button' + (key === species ? ' class="on"' : '') + '>' + SPECIES[key].e + ' ' + SPECIES[key].label + '</button>');
+      b.addEventListener('click', function () { species = key; seg.querySelectorAll('button').forEach(function (x) { x.classList.remove('on'); }); b.classList.add('on'); });
+      seg.appendChild(b);
+    });
+    $('#mx', host).onclick = closeModal;
+    $('#hSave', host).onclick = function () {
+      var tag = $('#hTag', host).value.trim() || nextTag;
+      var count = parseInt($('#hCount', host).value, 10) || 0;
+      var breed = $('#hBreed', host).value.trim();
+      var acq = $('#hAcq', host).value || addDays(0);
+      var intv = parseInt($('#hInt', host).value, 10) || 90;
+      var last = $('#hLast', host).value || addDays(0);
+      var note = $('#hNote', host).value.trim();
+      if (ed) { ed.tag = tag; ed.species = species; ed.count = count; ed.breed = breed; ed.acquiredISO = acq; ed.healthIntervalDays = intv; ed.lastHealthISO = last; ed.note = note; }
+      else { DB.herds.push({ id: f(), tag: tag, species: species, count: count, breed: breed, acquiredISO: acq, healthIntervalDays: intv, lastHealthISO: last, note: note, status: 'healthy', logs: [] }); }
+      save(); closeModal(); render(); toast(ed ? 'Herd updated' : 'Herd added');
+    };
+    if (ed) $('#hDel', host).onclick = function () {
+      DB.herds = DB.herds.filter(function (x) { return x.id !== ed.id; });
+      save(); closeModal(); go('fields'); toast('Herd deleted');
+    };
+  }
+
+  function openHerdLog(h, presetType) {
+    var defUnit = h.species === 'poultry' ? 'eggs' : 'litres';
+    var host = openModal(
+      '<div class="modal-head"><h3>Log · ' + esc(h.tag) + '</h3><button class="x" id="mx">&times;</button></div>' +
+      '<div class="row2"><div class="field-group"><label>Type</label><select id="lType">' + HERD_EVENTS.map(function (t) { return '<option' + (t === presetType ? ' selected' : '') + '>' + t + '</option>'; }).join('') + '</select></div>' +
+      '<div class="field-group"><label>Date</label><input id="lDate" type="date" value="' + addDays(0) + '"></div></div>' +
+      '<div class="field-group" id="gQty"><label>Number of animals</label><input id="lQty" type="number" inputmode="numeric" placeholder="0"></div>' +
+      '<div class="field-group" id="gWeight"><label>Average weight (kg)</label><input id="lWeight" type="number" inputmode="decimal" placeholder="0"></div>' +
+      '<div class="row2" id="gProd"><div class="field-group"><label>Amount</label><input id="lProd" type="number" inputmode="decimal" placeholder="0"></div>' +
+      '<div class="field-group"><label>Unit</label><select id="lUnit"><option value="litres"' + (defUnit === 'litres' ? ' selected' : '') + '>Litres (milk)</option><option value="eggs"' + (defUnit === 'eggs' ? ' selected' : '') + '>Eggs</option><option value="kg">kg</option></select></div></div>' +
+      '<div class="field-group" id="gCost"><label>Cost (' + curSym() + ')</label><input id="lCost" type="number" inputmode="decimal" placeholder="0"></div>' +
+      '<div class="field-group" id="gIncome"><label>Sale amount (' + curSym() + ')</label><input id="lIncome" type="number" inputmode="decimal" placeholder="0"></div>' +
+      '<div class="field-group"><label>Note (optional)</label><input id="lNote" placeholder="e.g. vaccine, buyer, cause"></div>' +
+      '<button class="btn-primary" id="lSave">Log it</button>');
+    function sync() {
+      var t = $('#lType', host).value;
+      function show(id, on) { $('#' + id, host).style.display = on ? '' : 'none'; }
+      show('gQty', ['Birth', 'Death', 'Sale', 'Purchase'].indexOf(t) >= 0);
+      show('gWeight', t === 'Weigh-in');
+      show('gProd', t === 'Production');
+      show('gCost', t === 'Purchase' || t === 'Treatment');
+      show('gIncome', t === 'Sale');
+    }
+    $('#lType', host).addEventListener('change', sync); sync();
+    $('#mx', host).onclick = closeModal;
+    $('#lSave', host).onclick = function () {
+      var t = $('#lType', host).value;
+      var date = $('#lDate', host).value || addDays(0);
+      var qty = parseInt($('#lQty', host).value, 10) || 0;
+      var weight = parseFloat($('#lWeight', host).value) || 0;
+      var prod = parseFloat($('#lProd', host).value) || 0;
+      var unit = $('#lUnit', host).value;
+      var cost = parseFloat($('#lCost', host).value) || 0;
+      var income = parseFloat($('#lIncome', host).value) || 0;
+      var note = $('#lNote', host).value.trim();
+      var log = { id: f(), dateISO: date, type: t, note: note };
+      if (['Birth', 'Death', 'Sale', 'Purchase'].indexOf(t) >= 0) {
+        if (qty <= 0) { toast('Enter the number of animals'); return; }
+        log.qty = qty;
+        if (t === 'Birth' || t === 'Purchase') h.count = (+h.count || 0) + qty;
+        else h.count = Math.max(0, (+h.count || 0) - qty);
+      }
+      if (t === 'Weigh-in') { if (weight <= 0) { toast('Enter a weight'); return; } log.weightKg = weight; }
+      if (t === 'Production') { if (prod <= 0) { toast('Enter the amount'); return; } log.prodQty = prod; log.prodUnit = unit; }
+      if (t === 'Purchase' || t === 'Treatment') log.cost = cost;
+      if (t === 'Sale') log.income = income;
+      if (t === 'Treatment') h.lastHealthISO = date;
+      h.logs = h.logs || []; h.logs.push(log);
+      if ((t === 'Purchase' || t === 'Treatment') && cost > 0) {
+        DB.expenses.push({ id: f(), fieldId: null, herdId: h.id, category: 'Livestock', amount: cost, dateISO: date, note: h.tag + ' — ' + t + (note ? ' (' + note + ')' : '') });
+      }
+      save(); closeModal(); render();
+      toast(cost > 0 ? 'Logged — ' + money(cost) + ' to expenses' : 'Logged');
+    };
+  }
+
+  /* ===================================================================
      RECORDS / PRO / CONSENT / EXPORT / MARKETPLACE
      =================================================================== */
   function normalizeDB() {
@@ -796,6 +1067,8 @@
     DB.settings = DB.settings || {};
     if (!DB.yields) DB.yields = [];
     if (!DB.equipment) DB.equipment = [];
+    if (!DB.herds) DB.herds = [];
+    if (!DB.farmMode) DB.farmMode = 'crops';
     if (!DB.settings.plan) DB.settings.plan = 'free';
     if (!DB.settings.country) DB.settings.country = detectCountry();
   }
@@ -1120,18 +1393,33 @@
     backTopbar('Yield analytics', 'Trends across your seasons');
     var v = $('#view'); v.innerHTML = '';
     var data = yieldAnalytics();
-    if (!data.length) { v.appendChild(emptyState('No harvests yet', 'Log harvests on your fields to see season-by-season yield trends.')); hideFab(); return; }
-    data.forEach(function (c) {
-      var maxv = Math.max(c.bench, c.seasons.reduce(function (m, s) { return Math.max(m, s.perHa); }, 0)) || 1;
-      var bars = c.seasons.map(function (s) {
-        var pct = Math.max(4, Math.round(s.perHa / maxv * 100));
-        return '<div class="abar"><span class="abar-v">' + s.perHa.toLocaleString('en-US') + '</span><div class="abar-fill" style="height:' + pct + '%"></div><span class="abar-y">' + s.year + '</span></div>';
-      }).join('');
-      var trendTxt = c.seasons.length < 2 ? '1 season' : (c.trend > 0 ? '▲ improving' : (c.trend < 0 ? '▼ declining' : 'steady'));
-      v.appendChild(el('<div class="an-card"><div class="an-head"><span class="an-ic">' + c.e + '</span><div class="an-meta"><b>' + c.label + '</b><span>avg ' + c.avgPerHa.toLocaleString('en-US') + ' kg/ha · ' + trendTxt + '</span></div></div>' +
-        '<div class="an-chart"><div class="bench-line" style="bottom:' + Math.round(c.bench / maxv * 100) + '%"></div>' + bars + '</div>' +
-        '<div class="an-foot">dashed line = benchmark ~' + c.bench.toLocaleString('en-US') + ' kg/ha</div></div>'));
-    });
+    var hasHerds = (DB.herds || []).length > 0;
+    if (!data.length && !hasHerds) { v.appendChild(emptyState('No data yet', 'Log harvests or add livestock to see trends here.')); hideFab(); return; }
+    if (data.length) {
+      v.appendChild(el('<div class="sec-h"><h3>Crop yields</h3></div>'));
+      data.forEach(function (c) {
+        var maxv = Math.max(c.bench, c.seasons.reduce(function (m, s) { return Math.max(m, s.perHa); }, 0)) || 1;
+        var bars = c.seasons.map(function (s) {
+          var pct = Math.max(4, Math.round(s.perHa / maxv * 100));
+          return '<div class="abar"><span class="abar-v">' + s.perHa.toLocaleString('en-US') + '</span><div class="abar-fill" style="height:' + pct + '%"></div><span class="abar-y">' + s.year + '</span></div>';
+        }).join('');
+        var trendTxt = c.seasons.length < 2 ? '1 season' : (c.trend > 0 ? '▲ improving' : (c.trend < 0 ? '▼ declining' : 'steady'));
+        v.appendChild(el('<div class="an-card"><div class="an-head"><span class="an-ic">' + c.e + '</span><div class="an-meta"><b>' + c.label + '</b><span>avg ' + c.avgPerHa.toLocaleString('en-US') + ' kg/ha · ' + trendTxt + '</span></div></div>' +
+          '<div class="an-chart"><div class="bench-line" style="bottom:' + Math.round(c.bench / maxv * 100) + '%"></div>' + bars + '</div>' +
+          '<div class="an-foot">dashed line = benchmark ~' + c.bench.toLocaleString('en-US') + ' kg/ha</div></div>'));
+      });
+    }
+    if (hasHerds) {
+      v.appendChild(el('<div class="sec-h" style="margin-top:16px"><h3>Livestock</h3></div>'));
+      DB.herds.forEach(function (h) {
+        var sp = speciesOf(h.species), st = herdStats(h), maxbd = Math.max(st.births, st.deaths, 1);
+        var prodTxt = '';
+        if (st.prod.length) { var r = st.prod.slice(-7), sum = r.reduce(function (a, p) { return a + (+p.prodQty || 0); }, 0); prodTxt = ' · ' + Math.round(sum / r.length) + ' ' + (st.prod[st.prod.length - 1].prodUnit || '') + '/day'; }
+        v.appendChild(el('<div class="an-card"><div class="an-head"><span class="an-ic">' + sp.e + '</span><div class="an-meta"><b>' + esc(h.tag) + ' · ' + sp.label + '</b><span>' + (+h.count || 0) + ' head · ' + st.mortality + '% mortality' + (st.latestW ? ' · ' + Math.round(st.latestW.weightKg) + 'kg avg' : '') + prodTxt + '</span></div></div>' +
+          '<div class="herd-an"><div class="bd"><span>+' + st.births + ' births</span><i class="bd-bar bd-up" style="width:' + Math.round(st.births / maxbd * 100) + '%"></i></div>' +
+          '<div class="bd"><span>−' + st.deaths + ' deaths</span><i class="bd-bar bd-down" style="width:' + Math.round(st.deaths / maxbd * 100) + '%"></i></div></div></div>'));
+      });
+    }
     hideFab();
   }
   function uniqueCropCount() { var s = {}; DB.fields.forEach(function (f) { s[f.crop] = 1; }); return Object.keys(s).length; }
@@ -1323,21 +1611,26 @@
     save(); render(); toast(t.cost > 0 ? 'Done — ' + money(t.cost) + ' logged to expenses' : 'Marked done');
   }
 
-  var EXP_CATS = ['Seed', 'Fertilizer', 'Chemicals', 'Fuel', 'Labour', 'Maintenance', 'Other'];
+  var EXP_CATS = ['Seed', 'Fertilizer', 'Chemicals', 'Fuel', 'Labour', 'Maintenance', 'Livestock', 'Other'];
   function openExpenseForm() {
     var host = openModal(
       '<div class="modal-head"><h3>Log expense</h3><button class="x" id="mx">&times;</button></div>' +
       '<div class="field-group"><label>Category</label><select id="eCat">' + EXP_CATS.map(function (c) { return '<option>' + c + '</option>'; }).join('') + '</select></div>' +
       '<div class="row2"><div class="field-group"><label>Amount (P)</label><input id="eAmt" type="number" inputmode="decimal" placeholder="0"></div>' +
       '<div class="field-group"><label>Date</label><input id="eDate" type="date" value="' + addDays(0) + '"></div></div>' +
-      '<div class="field-group"><label>Field (optional)</label><select id="eField"><option value="">Whole farm</option>' + DB.fields.map(function (x) { return '<option value="' + x.id + '">' + esc(x.tag + ' · ' + cropOf(x.crop).label) + '</option>'; }).join('') + '</select></div>' +
+      '<div class="field-group"><label>Attach to (optional)</label><select id="eField"><option value="">Whole farm</option>' +
+        (DB.fields.length ? '<optgroup label="Fields">' + DB.fields.map(function (x) { return '<option value="' + x.id + '">' + esc(x.tag + ' · ' + cropOf(x.crop).label) + '</option>'; }).join('') + '</optgroup>' : '') +
+        ((DB.herds && DB.herds.length) ? '<optgroup label="Herds">' + DB.herds.map(function (x) { return '<option value="herd:' + x.id + '">' + esc(x.tag + ' · ' + speciesOf(x.species).label) + '</option>'; }).join('') + '</optgroup>' : '') +
+        '</select></div>' +
       '<div class="field-group"><label>Note (optional)</label><input id="eNote" placeholder="e.g. tractor diesel"></div>' +
       '<button class="btn-primary" id="eSave">Log expense</button>');
     $('#mx', host).onclick = closeModal;
     $('#eSave', host).onclick = function () {
       var amt = parseFloat($('#eAmt', host).value) || 0;
       if (amt <= 0) { toast('Enter an amount'); return; }
-      DB.expenses.push({ id: f(), fieldId: $('#eField', host).value || null, category: $('#eCat', host).value, amount: amt, dateISO: $('#eDate', host).value || addDays(0), note: $('#eNote', host).value.trim() });
+      var attach = $('#eField', host).value, fieldId = null, herdId = null;
+      if (attach.indexOf('herd:') === 0) herdId = attach.slice(5); else fieldId = attach || null;
+      DB.expenses.push({ id: f(), fieldId: fieldId, herdId: herdId, category: $('#eCat', host).value, amount: amt, dateISO: $('#eDate', host).value || addDays(0), note: $('#eNote', host).value.trim() });
       save(); closeModal(); render(); toast('Expense logged');
     };
   }
@@ -1348,11 +1641,12 @@
     normalizeDB();
     document.querySelectorAll('.nav-item').forEach(function (b) {
       var moreish = ['suppliers', 'analytics', 'lender', 'pests', 'more'].indexOf(state.view) >= 0;
-      var match = b.dataset.view === state.view || (state.view === 'field' && b.dataset.view === 'fields') || (moreish && b.dataset.view === 'more');
+      var match = b.dataset.view === state.view || ((state.view === 'field' || state.view === 'herd') && b.dataset.view === 'fields') || (moreish && b.dataset.view === 'more');
       b.classList.toggle('on', match);
     });
     if (state.view === 'fields') viewFields();
     else if (state.view === 'field') viewField();
+    else if (state.view === 'herd') viewHerd();
     else if (state.view === 'tasks') viewAllTasks();
     else if (state.view === 'money') viewMoney();
     else if (state.view === 'pests') viewPests();

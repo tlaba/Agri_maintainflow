@@ -340,6 +340,19 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;color:inhe
 .hist-row span{font-size:11.5px;color:var(--muted)}
 .hist-cost{font-size:12.5px;font-weight:700;color:var(--ink);white-space:nowrap}
 
+/* livestock */
+.mode-toggle{display:flex;gap:6px;background:#fff;border:1px solid var(--hair);border-radius:13px;padding:5px;margin-bottom:16px}
+.mode-toggle button{flex:1;border:none;background:none;font-size:13.5px;font-weight:700;color:var(--muted);padding:10px;border-radius:9px;font-family:'Space Grotesk',sans-serif;cursor:pointer}
+.mode-toggle button.on{background:var(--green-soft);color:var(--green-deep)}
+.herd-stats{display:flex;flex-wrap:wrap;gap:8px}
+.herd-stats span{font-size:12px;font-weight:600;color:var(--ink);background:#fff;border:1px solid var(--hair);border-radius:999px;padding:7px 13px}
+.herd-an{display:flex;flex-direction:column;gap:9px;margin-top:8px}
+.herd-an .bd{display:flex;align-items:center;gap:10px;font-size:12px}
+.herd-an .bd span{width:96px;flex:0 0 96px;font-weight:600;color:var(--ink)}
+.herd-an .bd-bar{height:12px;border-radius:6px;display:block;min-width:4px}
+.herd-an .bd-up{background:var(--green)}
+.herd-an .bd-down{background:#d9534f}
+
 /* contact sheet */
 .sheet-note{font-size:12.5px;color:var(--muted);line-height:1.5;margin:-4px 2px 14px}
 .contact-alt{font-size:12.5px;color:var(--muted);text-align:center;margin-top:12px}

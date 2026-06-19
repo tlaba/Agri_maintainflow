@@ -104,7 +104,7 @@
   function addDays(n) { var d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); }
   function iso(y, m, d) { return new Date(y, m - 1, d).toISOString().slice(0, 10); }
   var YR = today().getFullYear();
-  var APP_VERSION = '1.5.2';
+  var APP_VERSION = '1.5.3';
   var CONTACT_EMAIL = 'info@maintainflow.pro';
   var CONTACT_TOPICS = ['Bug report', 'Feature request', 'Billing & Pro', 'Account & login', 'Partnership / sales', 'Something else'];
 
@@ -1785,12 +1785,13 @@
   }
   function updateSyncPill() {
     var p = $('#syncPill'), t = $('#syncText'); if (!p || !t) return;
+    p.classList.remove('is-warn');
     if (!navigator.onLine) { p.classList.add('is-offline'); t.textContent = cloud.on ? 'Offline' : 'Offline-ready'; return; }
     p.classList.remove('is-offline');
     if (cloud.on) {
       t.textContent = cloud.saving ? 'Saving…' : (cloud.lastSync ? 'Synced ' + relTime(cloud.lastSync) : 'Synced');
     } else if (cloudConfigured()) {
-      t.textContent = 'Saved on device';
+      p.classList.add('is-warn'); t.textContent = 'Not backed up';
     } else {
       t.textContent = 'Synced';
     }

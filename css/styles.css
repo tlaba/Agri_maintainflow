@@ -25,6 +25,8 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;color:inhe
 .offline{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);border-radius:999px;padding:5px 11px;font-size:11px;font-weight:600;color:#bfe9e8}
 .offline .dot{width:7px;height:7px;border-radius:50%;background:var(--leaf);transition:background .3s}
 .offline.is-offline .dot{background:var(--gold)}
+.offline.is-warn{background:rgba(240,180,80,.14);border-color:rgba(240,180,80,.42);color:#f4dcab}
+.offline.is-warn .dot{background:var(--gold)}
 .tb-greet{margin-top:14px;font-size:13px;color:#cfe8d0;font-weight:500}
 .tb-greet b{display:block;font-family:'Space Grotesk',sans-serif;font-size:22px;color:#fff;font-weight:600;margin-top:2px}
 .tb-back{display:flex;align-items:center;gap:12px;color:#fff}

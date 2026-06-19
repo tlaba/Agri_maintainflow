@@ -107,7 +107,7 @@
   function addDays(n) { var d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); }
   function iso(y, m, d) { return new Date(y, m - 1, d).toISOString().slice(0, 10); }
   var YR = today().getFullYear();
-  var APP_VERSION = '1.5.4';
+  var APP_VERSION = '1.6.0';
   var CONTACT_EMAIL = 'info@maintainflow.pro';
   var CONTACT_TOPICS = ['Bug report', 'Feature request', 'Billing & Pro', 'Account & login', 'Partnership / sales', 'Something else'];
 
@@ -272,7 +272,7 @@
     if (!DB.tasks || !DB.tasks.length) { /* keep */ }
   }
 
-  var state = { view: 'fields', fieldId: null, herdId: null, taskFilter: 'All' };
+  var state = { view: 'fields', fieldId: null, herdId: null, taskFilter: 'All', schedFilter: 'All' };
 
   /* ===================================================================
      VIEWS
@@ -1737,26 +1737,95 @@
     else if (state.view === 'more') viewMore();
     syncInstallBanner();
   }
-  // global "Tasks" tab = all open work orders across fields
+  /* ---- Schedule (Tasks tab): one timeline of crop work orders, livestock
+     health and equipment service, grouped Overdue / Today / This week / Later ---- */
+  function taskIcon(t) { return ({ Spray: '🧪', Fertilizer: '🌱', Irrigation: '💧', Scouting: '🔍', Weeding: '🌿', Planting: '🌱' })[t] || '🌱'; }
+  function scheduleItems() {
+    var items = [];
+    DB.tasks.filter(function (t) { return !t.completed; }).forEach(function (t) {
+      var fld = fieldById(t.fieldId);
+      items.push({ kind: 'Crops', dateISO: t.dueISO, icon: taskIcon(t.type), title: t.name,
+        sub: (fld ? fld.tag + ' · ' : '') + t.type + (t.detail ? ' · ' + t.detail : ''),
+        tap: function () { if (fld) { state.fieldId = fld.id; go('field'); } } });
+    });
+    (DB.herds || []).forEach(function (h) {
+      if (!h.healthIntervalDays) return;
+      items.push({ kind: 'Livestock', dateISO: nextHerdHealthISO(h), icon: speciesOf(h.species).e,
+        title: 'Health check', sub: h.tag + ' · ' + speciesOf(h.species).label,
+        tap: function () { state.herdId = h.id; go('herd'); } });
+    });
+    (DB.equipment || []).forEach(function (eq) {
+      if (!eq.intervalDays) return;
+      items.push({ kind: 'Equipment', dateISO: nextServiceISO(eq), icon: kindOf(eq.kind).e,
+        title: 'Service · ' + eq.name, sub: eq.make || kindOf(eq.kind).label,
+        tap: function () { go('equipment'); } });
+    });
+    return items;
+  }
+  function schedStatus(d) { return d < 0 ? 'over' : (d <= 4 ? 'due' : 'sched'); }
+  function schedPill(d) {
+    if (d < 0) return ['p-over', (-d) + 'd late'];
+    if (d === 0) return ['p-due', 'today'];
+    if (d <= 7) return ['p-' + (d <= 4 ? 'due' : 'sched'), 'in ' + d + 'd'];
+    return ['p-sched', fmtDate(addDays(d))];
+  }
+  function schedRow(it) {
+    var d = daysBetween(it.dateISO), st = schedStatus(d), pill = schedPill(d);
+    var dt = new Date(it.dateISO + 'T00:00');
+    var row = el('<button class="sch-row ' + st + '">' +
+      '<span class="sch-date"><b>' + dt.getDate() + '</b><span>' + dt.toLocaleString('en', { month: 'short' }) + '</span></span>' +
+      '<span class="sch-ic">' + it.icon + '</span>' +
+      '<div class="sch-meta"><div class="t">' + esc(it.title) + '</div><div class="s">' + esc(it.sub) + '</div></div>' +
+      '<span class="pill ' + pill[0] + '">' + pill[1] + '</span></button>');
+    row.addEventListener('click', it.tap);
+    return row;
+  }
   function viewAllTasks() {
     homeTopbar();
     var v = $('#view'); v.innerHTML = '';
-    v.appendChild(el('<div class="sec-h"><h3>All work orders</h3><span class="link">' + tasksDueCount() + ' due</span></div>'));
-    var open = DB.tasks.filter(function (t) { return !t.completed; }).sort(function (a, b) { return a.dueISO < b.dueISO ? -1 : 1; });
-    var done = DB.tasks.filter(function (t) { return t.completed; });
-    if (!open.length && !done.length) {
-      v.appendChild(emptyState('No tasks yet', 'Open a field and add a work order to get started.'));
-    }
-    open.forEach(function (t) {
-      var fld = fieldById(t.fieldId);
-      var card = woCard(t);
-      var det = $('.det', card);
-      if (fld) det.insertAdjacentHTML('afterbegin', '<span style="color:var(--teal-deep);font-weight:600">' + esc(fld.tag) + '</span> · ');
-      v.appendChild(card);
+    var FILTERS = ['All', 'Crops', 'Livestock', 'Equipment'];
+    var chips = el('<div class="chips"></div>');
+    FILTERS.forEach(function (fl) {
+      var b = el('<button class="chip' + (state.schedFilter === fl ? ' on' : '') + '">' + fl + '</button>');
+      b.addEventListener('click', function () { state.schedFilter = fl; viewAllTasks(); });
+      chips.appendChild(b);
     });
-    if (done.length) {
-      v.appendChild(el('<div class="sec-h" style="margin-top:14px"><h3>Completed</h3></div>'));
-      done.slice(-6).reverse().forEach(function (t) { v.appendChild(woCard(t)); });
+    v.appendChild(chips);
+
+    var items = scheduleItems();
+    if (state.schedFilter !== 'All') items = items.filter(function (it) { return it.kind === state.schedFilter; });
+    items.sort(function (a, b) { return a.dateISO < b.dateISO ? -1 : 1; });
+
+    var buckets = { Overdue: [], Today: [], 'This week': [], Later: [] };
+    items.forEach(function (it) {
+      var d = daysBetween(it.dateISO);
+      buckets[d < 0 ? 'Overdue' : d === 0 ? 'Today' : d <= 7 ? 'This week' : 'Later'].push(it);
+    });
+
+    if (!items.length) {
+      v.appendChild(emptyState('Nothing scheduled', 'Work orders, livestock health checks and equipment service will appear here as a timeline.'));
+    } else {
+      ['Overdue', 'Today', 'This week', 'Later'].forEach(function (name) {
+        var list = buckets[name]; if (!list.length) return;
+        var over = name === 'Overdue' ? ' over' : '';
+        var label = name === 'Today' ? 'Today · ' + fmtDate(addDays(0)) : name;
+        v.appendChild(el('<div class="sec-h' + over + '" style="margin-top:6px"><h3>' + label + '</h3><span class="link">' + list.length + '</span></div>'));
+        list.forEach(function (it) { v.appendChild(schedRow(it)); });
+      });
+    }
+
+    var done = DB.tasks.filter(function (t) { return t.completed; });
+    if (done.length && (state.schedFilter === 'All' || state.schedFilter === 'Crops')) {
+      v.appendChild(el('<div class="sec-h" style="margin-top:14px"><h3>Recently done</h3></div>'));
+      done.slice(-5).reverse().forEach(function (t) {
+        var fld = fieldById(t.fieldId);
+        var dt = new Date((t.completedISO || t.dueISO) + 'T00:00');
+        var row = el('<button class="sch-row done"><span class="sch-date"><b>' + dt.getDate() + '</b><span>' + dt.toLocaleString('en', { month: 'short' }) + '</span></span>' +
+          '<span class="sch-ic">' + taskIcon(t.type) + '</span><div class="sch-meta"><div class="t">' + esc(t.name) + '</div><div class="s">' + (fld ? esc(fld.tag) + ' · ' : '') + esc(t.type) + '</div></div>' +
+          '<span class="pill p-done">✓ done</span></button>');
+        row.addEventListener('click', function () { if (fld) { state.fieldId = fld.id; go('field'); } });
+        v.appendChild(row);
+      });
     }
     hideFab();
   }

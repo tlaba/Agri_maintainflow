@@ -342,6 +342,21 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;color:inhe
 .hist-row span{font-size:11.5px;color:var(--muted)}
 .hist-cost{font-size:12.5px;font-weight:700;color:var(--ink);white-space:nowrap}
 
+/* schedule (agenda) */
+.sch-row{display:flex;align-items:center;gap:11px;background:#fff;border:1px solid var(--hair);border-radius:13px;padding:10px 13px;margin-bottom:8px;position:relative;overflow:hidden;width:100%;text-align:left}
+.sch-row::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px}
+.sch-row.over::before{background:var(--clay)}.sch-row.due::before{background:var(--gold)}
+.sch-row.sched::before{background:var(--teal)}.sch-row.done::before{background:var(--leaf)}
+.sch-date{flex:0 0 34px;text-align:center;display:flex;flex-direction:column;line-height:1}
+.sch-date b{font-family:'Space Grotesk',sans-serif;font-size:17px;color:var(--ink)}
+.sch-date span{font-size:9.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-top:3px}
+.sch-ic{font-size:20px;flex:0 0 auto}
+.sch-meta{flex:1;min-width:0}
+.sch-meta .t{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:13.5px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sch-meta .s{font-size:11.5px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sch-row.done .sch-meta .t{color:var(--muted)}
+.sec-h.over h3{color:var(--clay)}
+
 /* back-up nudge */
 .backup-warn{display:flex;gap:11px;align-items:flex-start;background:#fff8ec;border:1px solid #f0d9a8;border-radius:13px;padding:14px;margin:6px 0 4px;font-size:13.5px;line-height:1.5;color:var(--ink)}
 .backup-warn .bw-ic{font-size:20px;flex:0 0 auto;line-height:1.3}

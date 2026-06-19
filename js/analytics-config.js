@@ -1,9 +1,8 @@
-/* MaintainFlow Ag — analytics configuration (Umami, self-hosted).
-   1. Stand up Umami (https://umami.is), add a website for your app domain.
-   2. Paste the Umami host URL and the website's ID below.
-   Leave blank to disable analytics — events still queue locally (capped) and
-   nothing is ever sent. Tracking is also gated behind the in-app consent. */
+/* MaintainFlow Ag — analytics configuration (Umami Cloud).
+   Tracking is offline-queued (events buffer in localStorage and flush when
+   online) and gated behind the in-app consent — see js/app.js + docs/ANALYTICS.md.
+   Leave both blank to disable analytics entirely. */
 window.MFAG_ANALYTICS = {
-  host: '',        // e.g. 'https://analytics.yourdomain.com'  (no trailing slash needed)
-  websiteId: ''    // e.g. '00000000-0000-0000-0000-000000000000'
+  host: 'https://cloud.umami.is',
+  websiteId: '4702bdc4-6f94-44a5-8fb7-9a20275e03e3'
 };

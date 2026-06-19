@@ -28,7 +28,7 @@
      Sends nothing until js/analytics-config.js is filled in AND the user has
      accepted the in-app consent. Events queue in localStorage and flush when
      online, so it works for offline-first usage. */
-  var AN_KEY = 'mfag.evt', anBusy = false, anLaunched = false;
+  var AN_KEY = 'mfag.evt', anBusy = false, anLaunched = false, anCache = '';
   function anCfg() { var a = window.MFAG_ANALYTICS; return (a && a.host && a.websiteId) ? a : null; }
   function anConsent() { return !!(DB && DB.settings && DB.settings.consent); }
   function anUTM() {
@@ -66,12 +66,15 @@
       url: item.url || '/', referrer: item.ref || ''
     };
     if (item.name) { payload.name = item.name; payload.data = item.data || {}; }
+    var headers = { 'Content-Type': 'application/json' };
+    if (anCache) headers['x-umami-cache'] = anCache;   // keeps events in one session/visit
     fetch(cfg.host.replace(/\/+$/, '') + '/api/send', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: headers,
       body: JSON.stringify({ type: 'event', payload: payload }), keepalive: true
     }).then(function (r) {
       anBusy = false;
       if (r && r.ok) {
+        r.text().then(function (txt) { try { var j = JSON.parse(txt); if (j && j.cache) anCache = j.cache; } catch (e) {} });
         try { var cur = JSON.parse(localStorage.getItem(AN_KEY) || '[]'); cur.shift(); localStorage.setItem(AN_KEY, JSON.stringify(cur)); } catch (e) {}
         if (q.length > 1) setTimeout(anFlush, 150);   // drain the queue
       }
@@ -104,7 +107,7 @@
   function addDays(n) { var d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); }
   function iso(y, m, d) { return new Date(y, m - 1, d).toISOString().slice(0, 10); }
   var YR = today().getFullYear();
-  var APP_VERSION = '1.5.3';
+  var APP_VERSION = '1.5.4';
   var CONTACT_EMAIL = 'info@maintainflow.pro';
   var CONTACT_TOPICS = ['Bug report', 'Feature request', 'Billing & Pro', 'Account & login', 'Partnership / sales', 'Something else'];
 

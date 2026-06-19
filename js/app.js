@@ -18,17 +18,93 @@
     try { var r = localStorage.getItem(storeKey()); return r ? JSON.parse(r) : null; } catch (e) { return null; }
   }
   function save() {
+    anStamp(); anActivation();   // analytics: createdAt/lastActive + activation milestone
     if (!STORE_OK) { mem = DB; }
     else { try { localStorage.setItem(storeKey(), JSON.stringify(DB)); } catch (e) {} }
     if (cloud.on && !cloud.applying) scheduleCloudSave();
   }
+
+  /* ---------------- analytics (Umami · offline-queued · consent-gated) ----------------
+     Sends nothing until js/analytics-config.js is filled in AND the user has
+     accepted the in-app consent. Events queue in localStorage and flush when
+     online, so it works for offline-first usage. */
+  var AN_KEY = 'mfag.evt', anBusy = false;
+  function anCfg() { var a = window.MFAG_ANALYTICS; return (a && a.host && a.websiteId) ? a : null; }
+  function anConsent() { return !!(DB && DB.settings && DB.settings.consent); }
+  function anUTM() {
+    try {
+      var u = new URLSearchParams(location.search);
+      if (u.get('utm_source')) {
+        localStorage.setItem('mfag.utm', u.get('utm_source') +
+          (u.get('utm_medium') ? '/' + u.get('utm_medium') : '') +
+          (u.get('utm_campaign') ? '/' + u.get('utm_campaign') : ''));
+      }
+    } catch (e) {}
+    try { return localStorage.getItem('mfag.utm') || ''; } catch (e) { return ''; }
+  }
+  function anQueue(item) {
+    try { var q = JSON.parse(localStorage.getItem(AN_KEY) || '[]'); q.push(item); localStorage.setItem(AN_KEY, JSON.stringify(q.slice(-300))); } catch (e) {}
+  }
+  function track(name, data) {
+    var d = data || {}; var utm = anUTM(); if (utm) d.src = utm;
+    anQueue({ name: name, data: d, url: location.pathname + '#' + (state ? state.view : ''), ref: document.referrer || '', ts: Date.now() });
+    anFlush();
+  }
+  function anPageview(path) {
+    anQueue({ url: path || location.pathname, ref: document.referrer || '', ts: Date.now() });
+    anFlush();
+  }
+  function anFlush() {
+    var cfg = anCfg(); if (!cfg || anBusy || !anConsent() || !navigator.onLine) return;
+    var q; try { q = JSON.parse(localStorage.getItem(AN_KEY) || '[]'); } catch (e) { return; }
+    if (!q.length) return;
+    anBusy = true;
+    var item = q[0];
+    var payload = {
+      website: cfg.websiteId, hostname: location.hostname, language: navigator.language || '',
+      screen: (screen.width + 'x' + screen.height), title: document.title,
+      url: item.url || '/', referrer: item.ref || ''
+    };
+    if (item.name) { payload.name = item.name; payload.data = item.data || {}; }
+    fetch(cfg.host.replace(/\/+$/, '') + '/api/send', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'event', payload: payload }), keepalive: true
+    }).then(function (r) {
+      anBusy = false;
+      if (r && r.ok) {
+        try { var cur = JSON.parse(localStorage.getItem(AN_KEY) || '[]'); cur.shift(); localStorage.setItem(AN_KEY, JSON.stringify(cur)); } catch (e) {}
+        if (q.length > 1) setTimeout(anFlush, 150);   // drain the queue
+      }
+    }).catch(function () { anBusy = false; });
+  }
+  function anStamp() {
+    if (!DB || !DB.settings) return;
+    if (!DB.settings.createdAt) DB.settings.createdAt = Date.now();
+    DB.settings.lastActiveISO = new Date().toISOString().slice(0, 10);
+  }
+  function anItems() {
+    var n = 0;
+    if (DB.fields) n += DB.fields.length;
+    if (DB.herds) { n += DB.herds.length; DB.herds.forEach(function (h) { n += (h.logs && h.logs.length) || 0; }); }
+    if (DB.tasks) n += DB.tasks.length;
+    if (DB.expenses) n += DB.expenses.length;
+    if (DB.yields) n += DB.yields.length;
+    if (DB.equipment) DB.equipment.forEach(function (e) { n += (e.logs && e.logs.length) || 0; });
+    return n;
+  }
+  function anActivation() {
+    // activation = the user created >=3 items of their own (seed data is the baseline, so it doesn't count)
+    if (!DB || !DB.settings || DB.settings.activated || DB.settings.baseCount === undefined) return;
+    if (anItems() - DB.settings.baseCount >= 3) { DB.settings.activated = true; track('activated'); }
+  }
+  window.addEventListener('online', anFlush);
 
   /* ---------------- seed ---------------- */
   function today() { return new Date(); }
   function addDays(n) { var d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); }
   function iso(y, m, d) { return new Date(y, m - 1, d).toISOString().slice(0, 10); }
   var YR = today().getFullYear();
-  var APP_VERSION = '1.4.0';
+  var APP_VERSION = '1.5.0';
   var CONTACT_EMAIL = 'info@maintainflow.pro';
   var CONTACT_TOPICS = ['Bug report', 'Feature request', 'Billing & Pro', 'Account & login', 'Partnership / sales', 'Something else'];
 
@@ -1071,6 +1147,7 @@
     if (!DB.farmMode) DB.farmMode = 'crops';
     if (!DB.settings.plan) DB.settings.plan = 'free';
     if (!DB.settings.country) DB.settings.country = detectCountry();
+    if (DB.settings.baseCount === undefined) DB.settings.baseCount = anItems(); // activation baseline (excludes seed/existing data)
   }
   function billingConfigured() { var b = window.MFAG_BILLING; return !!(b && b.provider === 'stripe' && b.enabled); }
   function isPro() {
@@ -1170,9 +1247,9 @@
     var host = openModal(head + body);
     $('#mx', host).onclick = closeModal;
     function bind(id, fn) { var e = $('#' + id, host); if (e) e.onclick = fn; }
-    bind('proGo', function () { DB.settings.plan = 'pro'; save(); closeModal(); render(); toast('Pro activated 🎉'); });
+    bind('proGo', function () { DB.settings.plan = 'pro'; save(); closeModal(); render(); track('pro_activated', { via: 'evaluation' }); toast('Pro activated 🎉'); });
     bind('proOff', function () { DB.settings.plan = 'free'; save(); closeModal(); render(); toast('Switched to Free'); });
-    bind('proPay', function () { closeModal(); startCheckout(); });
+    bind('proPay', function () { closeModal(); track('pro_checkout_start'); startCheckout(); });
     bind('proRenew', function () { closeModal(); startCheckout(); });
     bind('proSignin', function () { closeModal(); promptSignIn(); });
   }
@@ -1252,7 +1329,7 @@
   function showConsent() {
     var host = openModal('<div class="modal-head"><h3>Welcome to MaintainFlow Ag</h3></div><p class="modal-note">A quick note on your data before you start:</p><div class="legal">' + privacyHtml() + '</div><button class="btn-primary" id="cAgree">Agree &amp; continue</button>');
     $('#modalHost').onclick = null; // must choose Agree
-    $('#cAgree', host).onclick = function () { DB.settings = DB.settings || {}; DB.settings.consent = true; save(); closeModal(); };
+    $('#cAgree', host).onclick = function () { DB.settings = DB.settings || {}; DB.settings.consent = true; save(); closeModal(); track('consent_granted'); anFlush(); };
   }
 
   function csvCell(s) { s = String(s == null ? '' : s); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
@@ -1636,7 +1713,7 @@
   }
 
   /* ---------------- router ---------------- */
-  function go(view) { state.view = view; if (view !== 'field') state.taskFilter = 'All'; render(); window.scrollTo(0, 0); $('#view').scrollTop = 0; }
+  function go(view) { state.view = view; if (view !== 'field') state.taskFilter = 'All'; render(); anPageview('/' + view); window.scrollTo(0, 0); $('#view').scrollTop = 0; }
   function render() {
     normalizeDB();
     document.querySelectorAll('.nav-item').forEach(function (b) {
@@ -1754,6 +1831,7 @@
     if (deferredPrompt) {
       deferredPrompt.prompt();
       deferredPrompt.userChoice.then(function (c) {
+        track('install_prompt', { outcome: c.outcome });
         if (c.outcome === 'accepted') { hideInstallUI(); toast('Installing…'); }
         deferredPrompt = null;
       });
@@ -1768,7 +1846,7 @@
     e.preventDefault(); deferredPrompt = e; render();
   });
   window.addEventListener('appinstalled', function () {
-    deferredPrompt = null; hideInstallUI(); toast('Added to home screen 🎉'); render();
+    deferredPrompt = null; hideInstallUI(); toast('Added to home screen 🎉'); track('app_installed'); render();
   });
 
   $('#ibInstall').addEventListener('click', triggerInstall);
@@ -2121,6 +2199,7 @@
     if (isIOS() && !isStandalone() && DB && !DB.dismissInstall) { setTimeout(syncInstallBanner, 1200); }
     handleCheckoutReturn();   // toast after returning from Stripe Checkout
     render();
+    anUTM(); anPageview('/' + state.view); track('launch', { standalone: isStandalone(), mode: DB && DB.farmMode });
     ensureWeather();   // refresh local weather if a farm location is known
     if (DB && DB.settings && !DB.settings.consent) setTimeout(showConsent, 400);
   }

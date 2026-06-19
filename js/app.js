@@ -104,7 +104,7 @@
   function addDays(n) { var d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); }
   function iso(y, m, d) { return new Date(y, m - 1, d).toISOString().slice(0, 10); }
   var YR = today().getFullYear();
-  var APP_VERSION = '1.5.1';
+  var APP_VERSION = '1.5.2';
   var CONTACT_EMAIL = 'info@maintainflow.pro';
   var CONTACT_TOPICS = ['Bug report', 'Feature request', 'Billing & Pro', 'Account & login', 'Partnership / sales', 'Something else'];
 
@@ -1998,6 +1998,39 @@
   function guestChosen() { try { return localStorage.getItem('mfag.guest') === '1'; } catch (e) { return false; } }
   function setGuest(v) { try { if (v) localStorage.setItem('mfag.guest', '1'); else localStorage.removeItem('mfag.guest'); } catch (e) {} }
   function lastUid() { try { return localStorage.getItem('mfag.lastUid') || ''; } catch (e) { return ''; } }   // remembers a previously signed-in session to resume
+
+  /* ---- back-up nudge: explain the risk of local-only data, offer to sign in ----
+     Shown only to guests who already have real records worth protecting, snoozed
+     for a week after each showing and capped so it never nags. */
+  function shouldPromptBackup() {
+    if (!cloudConfigured() || cloud.on) return false;          // no cloud, or already backed up
+    if (!DB || !DB.settings || DB.settings.consent !== true) return false;
+    if (DB.settings.activated !== true) return false;          // wait until they've created their own data
+    if ((DB.settings.backupPrompts || 0) >= 3) return false;   // cap total nudges
+    if (Date.now() < (DB.settings.backupSnoozeUntil || 0)) return false; // snoozed
+    return true;
+  }
+  function maybePromptBackup() {
+    if (!shouldPromptBackup()) return;
+    if (!$('#modalHost').hidden) return;                       // don't stack on another modal
+    if ($('#authGate') && !$('#authGate').hidden) return;
+    openBackupSheet();
+  }
+  function openBackupSheet() {
+    DB.settings.backupPrompts = (DB.settings.backupPrompts || 0) + 1;
+    DB.settings.backupSnoozeUntil = Date.now() + 7 * 24 * 60 * 60 * 1000; // ask again in a week at the earliest
+    save();
+    track('backup_prompt_shown', { n: DB.settings.backupPrompts });
+    var host = openModal(
+      '<div class="modal-head"><h3>Back up your farm?</h3><button class="x" id="mx">&times;</button></div>' +
+      '<div class="backup-warn"><span class="bw-ic">⚠️</span><div>Right now your records are saved <b>only on this phone</b>. If you lose or change your phone, clear your browser, or uninstall the app, your fields, herds and costs will be <b>gone for good</b>.</div></div>' +
+      '<p class="backup-msg">Sign in (it’s free) to back everything up safely and sync across your devices. It takes about a minute.</p>' +
+      '<button class="btn-primary" id="bkGo">Back up my farm — free</button>' +
+      '<button class="btn-soft" id="bkLater">Not now</button>');
+    $('#mx', host).onclick = function () { track('backup_prompt_dismiss'); closeModal(); };
+    $('#bkLater', host).onclick = function () { track('backup_prompt_dismiss'); closeModal(); };
+    $('#bkGo', host).onclick = function () { track('backup_prompt_accept'); closeModal(); promptSignIn(); };
+  }
   function continueAsGuest() { setGuest(true); cloud.on = false; hideAuthGate(); if (!DB || cloud.uid) initLocalDB(); bootUI(); }
   // From local/guest mode, let the user reach the sign-in screen (loads the SDK on demand).
   function promptSignIn() {
@@ -2204,6 +2237,7 @@
     if (!anLaunched) { anLaunched = true; anUTM(); anPageview('/' + state.view); track('launch', { standalone: isStandalone(), mode: DB && DB.farmMode }); }
     ensureWeather();   // refresh local weather if a farm location is known
     if (DB && DB.settings && !DB.settings.consent) setTimeout(showConsent, 400);
+    else setTimeout(maybePromptBackup, 2500);
   }
 
   function startCloud() {

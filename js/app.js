@@ -28,7 +28,7 @@
      Sends nothing until js/analytics-config.js is filled in AND the user has
      accepted the in-app consent. Events queue in localStorage and flush when
      online, so it works for offline-first usage. */
-  var AN_KEY = 'mfag.evt', anBusy = false;
+  var AN_KEY = 'mfag.evt', anBusy = false, anLaunched = false;
   function anCfg() { var a = window.MFAG_ANALYTICS; return (a && a.host && a.websiteId) ? a : null; }
   function anConsent() { return !!(DB && DB.settings && DB.settings.consent); }
   function anUTM() {
@@ -104,7 +104,7 @@
   function addDays(n) { var d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); }
   function iso(y, m, d) { return new Date(y, m - 1, d).toISOString().slice(0, 10); }
   var YR = today().getFullYear();
-  var APP_VERSION = '1.5.0';
+  var APP_VERSION = '1.5.1';
   var CONTACT_EMAIL = 'info@maintainflow.pro';
   var CONTACT_TOPICS = ['Bug report', 'Feature request', 'Billing & Pro', 'Account & login', 'Partnership / sales', 'Something else'];
 
@@ -1958,6 +1958,7 @@
     if (cloud.entUnsub) { try { cloud.entUnsub(); } catch (e) {} cloud.entUnsub = null; }
     cloud.entitlement = null;
     cloud.on = false; cloud.uid = null; cloud.email = null;
+    try { localStorage.removeItem('mfag.lastUid'); } catch (e) {}
     if (cloud.auth) cloud.auth.signOut();
   }
 
@@ -1996,6 +1997,7 @@
   function hideAuthGate() { var g = $('#authGate'); if (g) { g.hidden = true; g.innerHTML = ''; } }
   function guestChosen() { try { return localStorage.getItem('mfag.guest') === '1'; } catch (e) { return false; } }
   function setGuest(v) { try { if (v) localStorage.setItem('mfag.guest', '1'); else localStorage.removeItem('mfag.guest'); } catch (e) {} }
+  function lastUid() { try { return localStorage.getItem('mfag.lastUid') || ''; } catch (e) { return ''; } }   // remembers a previously signed-in session to resume
   function continueAsGuest() { setGuest(true); cloud.on = false; hideAuthGate(); if (!DB || cloud.uid) initLocalDB(); bootUI(); }
   // From local/guest mode, let the user reach the sign-in screen (loads the SDK on demand).
   function promptSignIn() {
@@ -2199,7 +2201,7 @@
     if (isIOS() && !isStandalone() && DB && !DB.dismissInstall) { setTimeout(syncInstallBanner, 1200); }
     handleCheckoutReturn();   // toast after returning from Stripe Checkout
     render();
-    anUTM(); anPageview('/' + state.view); track('launch', { standalone: isStandalone(), mode: DB && DB.farmMode });
+    if (!anLaunched) { anLaunched = true; anUTM(); anPageview('/' + state.view); track('launch', { standalone: isStandalone(), mode: DB && DB.farmMode }); }
     ensureWeather();   // refresh local weather if a farm location is known
     if (DB && DB.settings && !DB.settings.consent) setTimeout(showConsent, 400);
   }
@@ -2215,12 +2217,14 @@
       cloud.auth.onAuthStateChanged(function (user) {
         if (user) {
           setGuest(false);          // they have an account now
+          try { localStorage.setItem('mfag.lastUid', user.uid); } catch (e) {}
           hideAuthGate();
           startCloudSync(user, bootUI);
         } else {
           cloudSignOut();
-          if (!DB) DB = seed();     // harmless placeholder so the (hidden) app never refs null
-          showAuthGate('signin');
+          if (!DB) initLocalDB();   // keep showing the app (home) — never strand on a blank state
+          if (cloud.silent) { cloud.silent = false; }   // silent resume found no session → stay on home
+          else showAuthGate('signin');                  // explicit sign-in flow → show the gate
         }
       });
     } catch (e) {
@@ -2228,20 +2232,18 @@
     }
   }
 
-  /* ---------------- boot ---------------- */
-  if (cloudConfigured() && !guestChosen()) {
-    showAuthGate('signin');           // show branded gate immediately while the SDK loads
+  /* ---------------- boot ----------------
+     Home is the landing page for everyone — no forced login. We boot straight
+     into the app (local/guest), then, only for a user who is already signed in
+     from a previous session, quietly resume their cloud sync in the background.
+     Signing in stays available on demand (home "Back up your farm" card / More). */
+  initLocalDB();
+  bootUI();
+  if (cloudConfigured() && lastUid() && !guestChosen()) {
+    cloud.silent = true;              // resume an existing session without showing the gate
     loadFirebaseSDK(function (err) {
-      if (err || !(window.firebase && firebase.auth)) {
-        // SDK unreachable (e.g. first run with no signal): degrade to local mode.
-        hideAuthGate(); initLocalDB(); bootUI();
-        return;
-      }
+      if (err || !(window.firebase && firebase.auth)) { cloud.silent = false; return; } // offline → stay local
       startCloud();
     });
-  } else {
-    // Local mode, or a returning guest (cloud available but they opted out).
-    initLocalDB();
-    bootUI();
   }
 })();

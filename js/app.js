@@ -107,7 +107,7 @@
   function addDays(n) { var d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); }
   function iso(y, m, d) { return new Date(y, m - 1, d).toISOString().slice(0, 10); }
   var YR = today().getFullYear();
-  var APP_VERSION = '1.6.0';
+  var APP_VERSION = '1.6.1';
   var CONTACT_EMAIL = 'info@maintainflow.pro';
   var CONTACT_TOPICS = ['Bug report', 'Feature request', 'Billing & Pro', 'Account & login', 'Partnership / sales', 'Something else'];
 
@@ -1745,7 +1745,7 @@
     DB.tasks.filter(function (t) { return !t.completed; }).forEach(function (t) {
       var fld = fieldById(t.fieldId);
       items.push({ kind: 'Crops', dateISO: t.dueISO, icon: taskIcon(t.type), title: t.name,
-        sub: (fld ? fld.tag + ' · ' : '') + t.type + (t.detail ? ' · ' + t.detail : ''),
+        sub: (fld ? fld.tag + ' · ' : '') + t.type + (t.detail ? ' · ' + t.detail : ''), task: t,
         tap: function () { if (fld) { state.fieldId = fld.id; go('field'); } } });
     });
     (DB.herds || []).forEach(function (h) {
@@ -1769,15 +1769,22 @@
     if (d <= 7) return ['p-' + (d <= 4 ? 'due' : 'sched'), 'in ' + d + 'd'];
     return ['p-sched', fmtDate(addDays(d))];
   }
+  var CHECK_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
   function schedRow(it) {
     var d = daysBetween(it.dateISO), st = schedStatus(d), pill = schedPill(d);
     var dt = new Date(it.dateISO + 'T00:00');
-    var row = el('<button class="sch-row ' + st + '">' +
+    var row = el('<div class="sch-row ' + st + '" role="button" tabindex="0">' +
       '<span class="sch-date"><b>' + dt.getDate() + '</b><span>' + dt.toLocaleString('en', { month: 'short' }) + '</span></span>' +
       '<span class="sch-ic">' + it.icon + '</span>' +
       '<div class="sch-meta"><div class="t">' + esc(it.title) + '</div><div class="s">' + esc(it.sub) + '</div></div>' +
-      '<span class="pill ' + pill[0] + '">' + pill[1] + '</span></button>');
+      '<span class="pill ' + pill[0] + '">' + pill[1] + '</span>' +
+      (it.task ? '<button class="sch-done" title="Mark done">' + CHECK_SVG + '</button>' : '') + '</div>');
     row.addEventListener('click', it.tap);
+    if (it.task) {
+      $('.sch-done', row).addEventListener('click', function (e) {
+        e.stopPropagation(); track('task_complete', { from: 'schedule' }); completeTask(it.task);
+      });
+    }
     return row;
   }
   function viewAllTasks() {

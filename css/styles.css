@@ -355,6 +355,8 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;color:inhe
 .sch-meta .t{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:13.5px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sch-meta .s{font-size:11.5px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sch-row.done .sch-meta .t{color:var(--muted)}
+.sch-done{flex:0 0 auto;width:30px;height:30px;border-radius:50%;border:1.5px solid var(--leaf);background:#fff;color:var(--leaf);display:flex;align-items:center;justify-content:center;margin-left:1px}
+.sch-done:active{background:var(--leaf);color:#fff;transform:scale(.94)}
 .sec-h.over h3{color:var(--clay)}
 
 /* back-up nudge */

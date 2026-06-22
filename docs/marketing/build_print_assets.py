@@ -1,6 +1,6 @@
 import qrcode, base64, os
 APP_URL="https://agri.maintainflow.pro"   # <-- EDIT to your final URL
-CONTACT="legops@gmail.com"                          # <-- EDIT contact
+CONTACT="info@maintainflow.pro"                          # <-- EDIT contact
 
 # QR (brand colours)
 qr=qrcode.QRCode(border=1,box_size=12,error_correction=qrcode.constants.ERROR_CORRECT_M)

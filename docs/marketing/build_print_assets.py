@@ -1,5 +1,5 @@
 import qrcode, base64, os
-APP_URL="https://agri-maintainflow.netlify.app"   # <-- EDIT to your final URL
+APP_URL="https://agri.maintainflow.pro"   # <-- EDIT to your final URL
 CONTACT="legops@gmail.com"                          # <-- EDIT contact
 
 # QR (brand colours)

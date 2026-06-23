@@ -18,17 +18,96 @@
     try { var r = localStorage.getItem(storeKey()); return r ? JSON.parse(r) : null; } catch (e) { return null; }
   }
   function save() {
+    anStamp(); anActivation();   // analytics: createdAt/lastActive + activation milestone
     if (!STORE_OK) { mem = DB; }
     else { try { localStorage.setItem(storeKey(), JSON.stringify(DB)); } catch (e) {} }
     if (cloud.on && !cloud.applying) scheduleCloudSave();
   }
+
+  /* ---------------- analytics (Umami · offline-queued · consent-gated) ----------------
+     Sends nothing until js/analytics-config.js is filled in AND the user has
+     accepted the in-app consent. Events queue in localStorage and flush when
+     online, so it works for offline-first usage. */
+  var AN_KEY = 'mfag.evt', anBusy = false, anLaunched = false, anCache = '';
+  function anCfg() { var a = window.MFAG_ANALYTICS; return (a && a.host && a.websiteId) ? a : null; }
+  function anConsent() { return !!(DB && DB.settings && DB.settings.consent); }
+  function anUTM() {
+    try {
+      var u = new URLSearchParams(location.search);
+      if (u.get('utm_source')) {
+        localStorage.setItem('mfag.utm', u.get('utm_source') +
+          (u.get('utm_medium') ? '/' + u.get('utm_medium') : '') +
+          (u.get('utm_campaign') ? '/' + u.get('utm_campaign') : ''));
+      }
+    } catch (e) {}
+    try { return localStorage.getItem('mfag.utm') || ''; } catch (e) { return ''; }
+  }
+  function anQueue(item) {
+    try { var q = JSON.parse(localStorage.getItem(AN_KEY) || '[]'); q.push(item); localStorage.setItem(AN_KEY, JSON.stringify(q.slice(-300))); } catch (e) {}
+  }
+  function track(name, data) {
+    var d = data || {}; var utm = anUTM(); if (utm) d.src = utm;
+    anQueue({ name: name, data: d, url: location.pathname + '#' + (state ? state.view : ''), ref: document.referrer || '', ts: Date.now() });
+    anFlush();
+  }
+  function anPageview(path) {
+    anQueue({ url: path || location.pathname, ref: document.referrer || '', ts: Date.now() });
+    anFlush();
+  }
+  function anFlush() {
+    var cfg = anCfg(); if (!cfg || anBusy || !anConsent() || !navigator.onLine) return;
+    var q; try { q = JSON.parse(localStorage.getItem(AN_KEY) || '[]'); } catch (e) { return; }
+    if (!q.length) return;
+    anBusy = true;
+    var item = q[0];
+    var payload = {
+      website: cfg.websiteId, hostname: location.hostname, language: navigator.language || '',
+      screen: (screen.width + 'x' + screen.height), title: document.title,
+      url: item.url || '/', referrer: item.ref || ''
+    };
+    if (item.name) { payload.name = item.name; payload.data = item.data || {}; }
+    var headers = { 'Content-Type': 'application/json' };
+    if (anCache) headers['x-umami-cache'] = anCache;   // keeps events in one session/visit
+    fetch(cfg.host.replace(/\/+$/, '') + '/api/send', {
+      method: 'POST', headers: headers,
+      body: JSON.stringify({ type: 'event', payload: payload }), keepalive: true
+    }).then(function (r) {
+      anBusy = false;
+      if (r && r.ok) {
+        r.text().then(function (txt) { try { var j = JSON.parse(txt); if (j && j.cache) anCache = j.cache; } catch (e) {} });
+        try { var cur = JSON.parse(localStorage.getItem(AN_KEY) || '[]'); cur.shift(); localStorage.setItem(AN_KEY, JSON.stringify(cur)); } catch (e) {}
+        if (q.length > 1) setTimeout(anFlush, 150);   // drain the queue
+      }
+    }).catch(function () { anBusy = false; });
+  }
+  function anStamp() {
+    if (!DB || !DB.settings) return;
+    if (!DB.settings.createdAt) DB.settings.createdAt = Date.now();
+    DB.settings.lastActiveISO = new Date().toISOString().slice(0, 10);
+  }
+  function anItems() {
+    var n = 0;
+    if (DB.fields) n += DB.fields.length;
+    if (DB.herds) { n += DB.herds.length; DB.herds.forEach(function (h) { n += (h.logs && h.logs.length) || 0; }); }
+    if (DB.tasks) n += DB.tasks.length;
+    if (DB.expenses) n += DB.expenses.length;
+    if (DB.yields) n += DB.yields.length;
+    if (DB.equipment) DB.equipment.forEach(function (e) { n += (e.logs && e.logs.length) || 0; });
+    return n;
+  }
+  function anActivation() {
+    // activation = the user created >=3 items of their own (seed data is the baseline, so it doesn't count)
+    if (!DB || !DB.settings || DB.settings.activated || DB.settings.baseCount === undefined) return;
+    if (anItems() - DB.settings.baseCount >= 3) { DB.settings.activated = true; track('activated'); }
+  }
+  window.addEventListener('online', anFlush);
 
   /* ---------------- seed ---------------- */
   function today() { return new Date(); }
   function addDays(n) { var d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); }
   function iso(y, m, d) { return new Date(y, m - 1, d).toISOString().slice(0, 10); }
   var YR = today().getFullYear();
-  var APP_VERSION = '1.4.0';
+  var APP_VERSION = '1.6.1';
   var CONTACT_EMAIL = 'info@maintainflow.pro';
   var CONTACT_TOPICS = ['Bug report', 'Feature request', 'Billing & Pro', 'Account & login', 'Partnership / sales', 'Something else'];
 
@@ -193,7 +272,7 @@
     if (!DB.tasks || !DB.tasks.length) { /* keep */ }
   }
 
-  var state = { view: 'fields', fieldId: null, herdId: null, taskFilter: 'All' };
+  var state = { view: 'fields', fieldId: null, herdId: null, taskFilter: 'All', schedFilter: 'All' };
 
   /* ===================================================================
      VIEWS
@@ -1071,6 +1150,7 @@
     if (!DB.farmMode) DB.farmMode = 'crops';
     if (!DB.settings.plan) DB.settings.plan = 'free';
     if (!DB.settings.country) DB.settings.country = detectCountry();
+    if (DB.settings.baseCount === undefined) DB.settings.baseCount = anItems(); // activation baseline (excludes seed/existing data)
   }
   function billingConfigured() { var b = window.MFAG_BILLING; return !!(b && b.provider === 'stripe' && b.enabled); }
   function isPro() {
@@ -1170,9 +1250,9 @@
     var host = openModal(head + body);
     $('#mx', host).onclick = closeModal;
     function bind(id, fn) { var e = $('#' + id, host); if (e) e.onclick = fn; }
-    bind('proGo', function () { DB.settings.plan = 'pro'; save(); closeModal(); render(); toast('Pro activated 🎉'); });
+    bind('proGo', function () { DB.settings.plan = 'pro'; save(); closeModal(); render(); track('pro_activated', { via: 'evaluation' }); toast('Pro activated 🎉'); });
     bind('proOff', function () { DB.settings.plan = 'free'; save(); closeModal(); render(); toast('Switched to Free'); });
-    bind('proPay', function () { closeModal(); startCheckout(); });
+    bind('proPay', function () { closeModal(); track('pro_checkout_start'); startCheckout(); });
     bind('proRenew', function () { closeModal(); startCheckout(); });
     bind('proSignin', function () { closeModal(); promptSignIn(); });
   }
@@ -1252,7 +1332,7 @@
   function showConsent() {
     var host = openModal('<div class="modal-head"><h3>Welcome to MaintainFlow Ag</h3></div><p class="modal-note">A quick note on your data before you start:</p><div class="legal">' + privacyHtml() + '</div><button class="btn-primary" id="cAgree">Agree &amp; continue</button>');
     $('#modalHost').onclick = null; // must choose Agree
-    $('#cAgree', host).onclick = function () { DB.settings = DB.settings || {}; DB.settings.consent = true; save(); closeModal(); };
+    $('#cAgree', host).onclick = function () { DB.settings = DB.settings || {}; DB.settings.consent = true; save(); closeModal(); track('consent_granted'); anFlush(); };
   }
 
   function csvCell(s) { s = String(s == null ? '' : s); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
@@ -1636,7 +1716,7 @@
   }
 
   /* ---------------- router ---------------- */
-  function go(view) { state.view = view; if (view !== 'field') state.taskFilter = 'All'; render(); window.scrollTo(0, 0); $('#view').scrollTop = 0; }
+  function go(view) { state.view = view; if (view !== 'field') state.taskFilter = 'All'; render(); anPageview('/' + view); window.scrollTo(0, 0); $('#view').scrollTop = 0; }
   function render() {
     normalizeDB();
     document.querySelectorAll('.nav-item').forEach(function (b) {
@@ -1657,26 +1737,102 @@
     else if (state.view === 'more') viewMore();
     syncInstallBanner();
   }
-  // global "Tasks" tab = all open work orders across fields
+  /* ---- Schedule (Tasks tab): one timeline of crop work orders, livestock
+     health and equipment service, grouped Overdue / Today / This week / Later ---- */
+  function taskIcon(t) { return ({ Spray: '🧪', Fertilizer: '🌱', Irrigation: '💧', Scouting: '🔍', Weeding: '🌿', Planting: '🌱' })[t] || '🌱'; }
+  function scheduleItems() {
+    var items = [];
+    DB.tasks.filter(function (t) { return !t.completed; }).forEach(function (t) {
+      var fld = fieldById(t.fieldId);
+      items.push({ kind: 'Crops', dateISO: t.dueISO, icon: taskIcon(t.type), title: t.name,
+        sub: (fld ? fld.tag + ' · ' : '') + t.type + (t.detail ? ' · ' + t.detail : ''), task: t,
+        tap: function () { if (fld) { state.fieldId = fld.id; go('field'); } } });
+    });
+    (DB.herds || []).forEach(function (h) {
+      if (!h.healthIntervalDays) return;
+      items.push({ kind: 'Livestock', dateISO: nextHerdHealthISO(h), icon: speciesOf(h.species).e,
+        title: 'Health check', sub: h.tag + ' · ' + speciesOf(h.species).label,
+        tap: function () { state.herdId = h.id; go('herd'); } });
+    });
+    (DB.equipment || []).forEach(function (eq) {
+      if (!eq.intervalDays) return;
+      items.push({ kind: 'Equipment', dateISO: nextServiceISO(eq), icon: kindOf(eq.kind).e,
+        title: 'Service · ' + eq.name, sub: eq.make || kindOf(eq.kind).label,
+        tap: function () { go('equipment'); } });
+    });
+    return items;
+  }
+  function schedStatus(d) { return d < 0 ? 'over' : (d <= 4 ? 'due' : 'sched'); }
+  function schedPill(d) {
+    if (d < 0) return ['p-over', (-d) + 'd late'];
+    if (d === 0) return ['p-due', 'today'];
+    if (d <= 7) return ['p-' + (d <= 4 ? 'due' : 'sched'), 'in ' + d + 'd'];
+    return ['p-sched', fmtDate(addDays(d))];
+  }
+  var CHECK_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+  function schedRow(it) {
+    var d = daysBetween(it.dateISO), st = schedStatus(d), pill = schedPill(d);
+    var dt = new Date(it.dateISO + 'T00:00');
+    var row = el('<div class="sch-row ' + st + '" role="button" tabindex="0">' +
+      '<span class="sch-date"><b>' + dt.getDate() + '</b><span>' + dt.toLocaleString('en', { month: 'short' }) + '</span></span>' +
+      '<span class="sch-ic">' + it.icon + '</span>' +
+      '<div class="sch-meta"><div class="t">' + esc(it.title) + '</div><div class="s">' + esc(it.sub) + '</div></div>' +
+      '<span class="pill ' + pill[0] + '">' + pill[1] + '</span>' +
+      (it.task ? '<button class="sch-done" title="Mark done">' + CHECK_SVG + '</button>' : '') + '</div>');
+    row.addEventListener('click', it.tap);
+    if (it.task) {
+      $('.sch-done', row).addEventListener('click', function (e) {
+        e.stopPropagation(); track('task_complete', { from: 'schedule' }); completeTask(it.task);
+      });
+    }
+    return row;
+  }
   function viewAllTasks() {
     homeTopbar();
     var v = $('#view'); v.innerHTML = '';
-    v.appendChild(el('<div class="sec-h"><h3>All work orders</h3><span class="link">' + tasksDueCount() + ' due</span></div>'));
-    var open = DB.tasks.filter(function (t) { return !t.completed; }).sort(function (a, b) { return a.dueISO < b.dueISO ? -1 : 1; });
-    var done = DB.tasks.filter(function (t) { return t.completed; });
-    if (!open.length && !done.length) {
-      v.appendChild(emptyState('No tasks yet', 'Open a field and add a work order to get started.'));
-    }
-    open.forEach(function (t) {
-      var fld = fieldById(t.fieldId);
-      var card = woCard(t);
-      var det = $('.det', card);
-      if (fld) det.insertAdjacentHTML('afterbegin', '<span style="color:var(--teal-deep);font-weight:600">' + esc(fld.tag) + '</span> · ');
-      v.appendChild(card);
+    var FILTERS = ['All', 'Crops', 'Livestock', 'Equipment'];
+    var chips = el('<div class="chips"></div>');
+    FILTERS.forEach(function (fl) {
+      var b = el('<button class="chip' + (state.schedFilter === fl ? ' on' : '') + '">' + fl + '</button>');
+      b.addEventListener('click', function () { state.schedFilter = fl; viewAllTasks(); });
+      chips.appendChild(b);
     });
-    if (done.length) {
-      v.appendChild(el('<div class="sec-h" style="margin-top:14px"><h3>Completed</h3></div>'));
-      done.slice(-6).reverse().forEach(function (t) { v.appendChild(woCard(t)); });
+    v.appendChild(chips);
+
+    var items = scheduleItems();
+    if (state.schedFilter !== 'All') items = items.filter(function (it) { return it.kind === state.schedFilter; });
+    items.sort(function (a, b) { return a.dateISO < b.dateISO ? -1 : 1; });
+
+    var buckets = { Overdue: [], Today: [], 'This week': [], Later: [] };
+    items.forEach(function (it) {
+      var d = daysBetween(it.dateISO);
+      buckets[d < 0 ? 'Overdue' : d === 0 ? 'Today' : d <= 7 ? 'This week' : 'Later'].push(it);
+    });
+
+    if (!items.length) {
+      v.appendChild(emptyState('Nothing scheduled', 'Work orders, livestock health checks and equipment service will appear here as a timeline.'));
+    } else {
+      ['Overdue', 'Today', 'This week', 'Later'].forEach(function (name) {
+        var list = buckets[name]; if (!list.length) return;
+        var over = name === 'Overdue' ? ' over' : '';
+        var label = name === 'Today' ? 'Today · ' + fmtDate(addDays(0)) : name;
+        v.appendChild(el('<div class="sec-h' + over + '" style="margin-top:6px"><h3>' + label + '</h3><span class="link">' + list.length + '</span></div>'));
+        list.forEach(function (it) { v.appendChild(schedRow(it)); });
+      });
+    }
+
+    var done = DB.tasks.filter(function (t) { return t.completed; });
+    if (done.length && (state.schedFilter === 'All' || state.schedFilter === 'Crops')) {
+      v.appendChild(el('<div class="sec-h" style="margin-top:14px"><h3>Recently done</h3></div>'));
+      done.slice(-5).reverse().forEach(function (t) {
+        var fld = fieldById(t.fieldId);
+        var dt = new Date((t.completedISO || t.dueISO) + 'T00:00');
+        var row = el('<button class="sch-row done"><span class="sch-date"><b>' + dt.getDate() + '</b><span>' + dt.toLocaleString('en', { month: 'short' }) + '</span></span>' +
+          '<span class="sch-ic">' + taskIcon(t.type) + '</span><div class="sch-meta"><div class="t">' + esc(t.name) + '</div><div class="s">' + (fld ? esc(fld.tag) + ' · ' : '') + esc(t.type) + '</div></div>' +
+          '<span class="pill p-done">✓ done</span></button>');
+        row.addEventListener('click', function () { if (fld) { state.fieldId = fld.id; go('field'); } });
+        v.appendChild(row);
+      });
     }
     hideFab();
   }
@@ -1708,12 +1864,13 @@
   }
   function updateSyncPill() {
     var p = $('#syncPill'), t = $('#syncText'); if (!p || !t) return;
+    p.classList.remove('is-warn');
     if (!navigator.onLine) { p.classList.add('is-offline'); t.textContent = cloud.on ? 'Offline' : 'Offline-ready'; return; }
     p.classList.remove('is-offline');
     if (cloud.on) {
       t.textContent = cloud.saving ? 'Saving…' : (cloud.lastSync ? 'Synced ' + relTime(cloud.lastSync) : 'Synced');
     } else if (cloudConfigured()) {
-      t.textContent = 'Saved on device';
+      p.classList.add('is-warn'); t.textContent = 'Not backed up';
     } else {
       t.textContent = 'Synced';
     }
@@ -1754,6 +1911,7 @@
     if (deferredPrompt) {
       deferredPrompt.prompt();
       deferredPrompt.userChoice.then(function (c) {
+        track('install_prompt', { outcome: c.outcome });
         if (c.outcome === 'accepted') { hideInstallUI(); toast('Installing…'); }
         deferredPrompt = null;
       });
@@ -1768,7 +1926,7 @@
     e.preventDefault(); deferredPrompt = e; render();
   });
   window.addEventListener('appinstalled', function () {
-    deferredPrompt = null; hideInstallUI(); toast('Added to home screen 🎉'); render();
+    deferredPrompt = null; hideInstallUI(); toast('Added to home screen 🎉'); track('app_installed'); render();
   });
 
   $('#ibInstall').addEventListener('click', triggerInstall);
@@ -1880,6 +2038,7 @@
     if (cloud.entUnsub) { try { cloud.entUnsub(); } catch (e) {} cloud.entUnsub = null; }
     cloud.entitlement = null;
     cloud.on = false; cloud.uid = null; cloud.email = null;
+    try { localStorage.removeItem('mfag.lastUid'); } catch (e) {}
     if (cloud.auth) cloud.auth.signOut();
   }
 
@@ -1918,6 +2077,40 @@
   function hideAuthGate() { var g = $('#authGate'); if (g) { g.hidden = true; g.innerHTML = ''; } }
   function guestChosen() { try { return localStorage.getItem('mfag.guest') === '1'; } catch (e) { return false; } }
   function setGuest(v) { try { if (v) localStorage.setItem('mfag.guest', '1'); else localStorage.removeItem('mfag.guest'); } catch (e) {} }
+  function lastUid() { try { return localStorage.getItem('mfag.lastUid') || ''; } catch (e) { return ''; } }   // remembers a previously signed-in session to resume
+
+  /* ---- back-up nudge: explain the risk of local-only data, offer to sign in ----
+     Shown only to guests who already have real records worth protecting, snoozed
+     for a week after each showing and capped so it never nags. */
+  function shouldPromptBackup() {
+    if (!cloudConfigured() || cloud.on) return false;          // no cloud, or already backed up
+    if (!DB || !DB.settings || DB.settings.consent !== true) return false;
+    if (DB.settings.activated !== true) return false;          // wait until they've created their own data
+    if ((DB.settings.backupPrompts || 0) >= 3) return false;   // cap total nudges
+    if (Date.now() < (DB.settings.backupSnoozeUntil || 0)) return false; // snoozed
+    return true;
+  }
+  function maybePromptBackup() {
+    if (!shouldPromptBackup()) return;
+    if (!$('#modalHost').hidden) return;                       // don't stack on another modal
+    if ($('#authGate') && !$('#authGate').hidden) return;
+    openBackupSheet();
+  }
+  function openBackupSheet() {
+    DB.settings.backupPrompts = (DB.settings.backupPrompts || 0) + 1;
+    DB.settings.backupSnoozeUntil = Date.now() + 7 * 24 * 60 * 60 * 1000; // ask again in a week at the earliest
+    save();
+    track('backup_prompt_shown', { n: DB.settings.backupPrompts });
+    var host = openModal(
+      '<div class="modal-head"><h3>Back up your farm?</h3><button class="x" id="mx">&times;</button></div>' +
+      '<div class="backup-warn"><span class="bw-ic">⚠️</span><div>Right now your records are saved <b>only on this phone</b>. If you lose or change your phone, clear your browser, or uninstall the app, your fields, herds and costs will be <b>gone for good</b>.</div></div>' +
+      '<p class="backup-msg">Sign in (it’s free) to back everything up safely and sync across your devices. It takes about a minute.</p>' +
+      '<button class="btn-primary" id="bkGo">Back up my farm — free</button>' +
+      '<button class="btn-soft" id="bkLater">Not now</button>');
+    $('#mx', host).onclick = function () { track('backup_prompt_dismiss'); closeModal(); };
+    $('#bkLater', host).onclick = function () { track('backup_prompt_dismiss'); closeModal(); };
+    $('#bkGo', host).onclick = function () { track('backup_prompt_accept'); closeModal(); promptSignIn(); };
+  }
   function continueAsGuest() { setGuest(true); cloud.on = false; hideAuthGate(); if (!DB || cloud.uid) initLocalDB(); bootUI(); }
   // From local/guest mode, let the user reach the sign-in screen (loads the SDK on demand).
   function promptSignIn() {
@@ -2121,8 +2314,10 @@
     if (isIOS() && !isStandalone() && DB && !DB.dismissInstall) { setTimeout(syncInstallBanner, 1200); }
     handleCheckoutReturn();   // toast after returning from Stripe Checkout
     render();
+    if (!anLaunched) { anLaunched = true; anUTM(); anPageview('/' + state.view); track('launch', { standalone: isStandalone(), mode: DB && DB.farmMode }); }
     ensureWeather();   // refresh local weather if a farm location is known
     if (DB && DB.settings && !DB.settings.consent) setTimeout(showConsent, 400);
+    else setTimeout(maybePromptBackup, 2500);
   }
 
   function startCloud() {
@@ -2136,12 +2331,14 @@
       cloud.auth.onAuthStateChanged(function (user) {
         if (user) {
           setGuest(false);          // they have an account now
+          try { localStorage.setItem('mfag.lastUid', user.uid); } catch (e) {}
           hideAuthGate();
           startCloudSync(user, bootUI);
         } else {
           cloudSignOut();
-          if (!DB) DB = seed();     // harmless placeholder so the (hidden) app never refs null
-          showAuthGate('signin');
+          if (!DB) initLocalDB();   // keep showing the app (home) — never strand on a blank state
+          if (cloud.silent) { cloud.silent = false; }   // silent resume found no session → stay on home
+          else showAuthGate('signin');                  // explicit sign-in flow → show the gate
         }
       });
     } catch (e) {
@@ -2149,20 +2346,18 @@
     }
   }
 
-  /* ---------------- boot ---------------- */
-  if (cloudConfigured() && !guestChosen()) {
-    showAuthGate('signin');           // show branded gate immediately while the SDK loads
+  /* ---------------- boot ----------------
+     Home is the landing page for everyone — no forced login. We boot straight
+     into the app (local/guest), then, only for a user who is already signed in
+     from a previous session, quietly resume their cloud sync in the background.
+     Signing in stays available on demand (home "Back up your farm" card / More). */
+  initLocalDB();
+  bootUI();
+  if (cloudConfigured() && lastUid() && !guestChosen()) {
+    cloud.silent = true;              // resume an existing session without showing the gate
     loadFirebaseSDK(function (err) {
-      if (err || !(window.firebase && firebase.auth)) {
-        // SDK unreachable (e.g. first run with no signal): degrade to local mode.
-        hideAuthGate(); initLocalDB(); bootUI();
-        return;
-      }
+      if (err || !(window.firebase && firebase.auth)) { cloud.silent = false; return; } // offline → stay local
       startCloud();
     });
-  } else {
-    // Local mode, or a returning guest (cloud available but they opted out).
-    initLocalDB();
-    bootUI();
   }
 })();

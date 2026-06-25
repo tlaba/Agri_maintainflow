@@ -107,7 +107,7 @@
   function addDays(n) { var d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); }
   function iso(y, m, d) { return new Date(y, m - 1, d).toISOString().slice(0, 10); }
   var YR = today().getFullYear();
-  var APP_VERSION = '1.8.0';
+  var APP_VERSION = '1.8.1';
   var CONTACT_EMAIL = 'info@maintainflow.pro';
   var CONTACT_TOPICS = ['Bug report', 'Feature request', 'Billing & Pro', 'Account & login', 'Partnership / sales', 'Something else'];
 
@@ -1445,7 +1445,7 @@
     try {
       var unsub = cloud.db.collection('listings').where('country', '==', cc).onSnapshot(function (qs) {
         var arr = [];
-        qs.forEach(function (d) { var x = d.data(); if (x && x.active !== false) { x._id = d.id; x.member = true; arr.push(x); } });
+        qs.forEach(function (d) { var x = d.data(); if (x && x.active !== false && x.hidden !== true) { x._id = d.id; x.member = true; arr.push(x); } });
         communityListings = arr; cacheListings(cc, arr);
         if (state.view === 'suppliers') render();
       }, function () {});
@@ -1453,6 +1453,39 @@
     } catch (e) {}
   }
   function unsubscribeListings() { if (listingsSub && listingsSub.unsub) { try { listingsSub.unsub(); } catch (e) {} } listingsSub = null; communityListings = []; }
+  // Guests don't load the SDK, so they read the world-readable mirror via the Firestore REST API.
+  var publicLoad = { cc: null, busy: false };
+  function loadPublicListings(cc) {
+    var fb = window.MFAG_FIREBASE; if (!fb || !fb.projectId || !window.fetch) return;
+    if (publicLoad.busy || publicLoad.cc === cc) return;   // fetch a given country at most once per session
+    publicLoad.busy = true;
+    fetch('https://firestore.googleapis.com/v1/projects/' + fb.projectId + '/databases/(default)/documents/public/listings')
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) {
+        publicLoad.busy = false; publicLoad.cc = cc;
+        if (!j || !j.fields || !j.fields.json) return;
+        var arr; try { arr = JSON.parse(j.fields.json.stringValue || '[]'); } catch (e) { return; }
+        arr = arr.filter(function (s) { return s.country === cc; }).map(function (s) { s._id = s.uid; s.member = true; return s; });
+        if (JSON.stringify(arr) === JSON.stringify(communityListings)) return;   // unchanged → no re-render
+        communityListings = arr; cacheListings(cc, arr);
+        if (state.view === 'suppliers') render();
+      }).catch(function () { publicLoad.busy = false; });
+  }
+  function reportListing(s, reason) {
+    if (!cloud.on) { toast('Sign in to report a listing'); promptSignIn(); return; }
+    var rid = (s._id || s.uid) + '__' + cloud.uid;
+    cloud.db.collection('reports').doc(rid).set({ listingUid: s._id || s.uid, reporterUid: cloud.uid, reason: reason, createdAt: Date.now() })
+      .then(function () { track('listing_reported', { reason: reason }); toast('Thanks — sent for review'); })
+      .catch(function () { toast('Couldn’t report — try again'); });
+  }
+  function openReportSheet(s) {
+    var reasons = ['Spam', 'Scam or fraud', 'Offensive', 'Wrong or fake info', 'Other'];
+    var host = openModal('<div class="modal-head"><h3>Report listing</h3><button class="x" id="mx">&times;</button></div>' +
+      '<p class="modal-note">Why are you reporting “' + esc(s.name) + '”?</p>' +
+      reasons.map(function (r) { return '<button class="btn-soft rp" data-r="' + esc(r) + '">' + r + '</button>'; }).join(''));
+    $('#mx', host).onclick = closeModal;
+    host.querySelectorAll('.rp').forEach(function (btn) { btn.onclick = function () { reportListing(s, btn.getAttribute('data-r')); closeModal(); }; });
+  }
   function startListing() {
     if (!cloudConfigured()) { toast('Sign-in isn’t set up yet'); return; }
     if (!cloud.on) { toast('Sign in to list your business'); promptSignIn(); return; }
@@ -1482,7 +1515,7 @@
       if (wa.length < 7) { toast('Enter a valid WhatsApp number'); return; }
       var data = { uid: cloud.uid, name: name, role: role, cat: roleInfo(role).cat, country: $('#loCountry', host).value || cc, loc: $('#loLoc', host).value.trim(), desc: desc, whatsapp: wa, tel: '', active: true, updatedAt: Date.now() };
       $('#loSave', host).disabled = true;
-      cloud.db.collection('listings').doc(cloud.uid).set(data).then(function () {
+      cloud.db.collection('listings').doc(cloud.uid).set(data, { merge: true }).then(function () {
         track('listing_published', { role: role });
         closeModal(); render(); toast(ed ? 'Listing updated' : 'Published — other farmers can find you 🎉');
       }).catch(function () { $('#loSave', host).disabled = false; toast('Couldn’t publish — check your connection'); });
@@ -1502,7 +1535,7 @@
     loadSuppliers();
     var cc = (DB.settings && DB.settings.country) || 'BW';
     var ci = countryInfo();
-    subscribeListings(cc);
+    if (cloud.on) subscribeListings(cc); else loadPublicListings(cc);   // signed-in: live; guest: public mirror
     var all = suppliersData && suppliersData.length ? suppliersData : SUPPLIERS_FALLBACK;
     var curated = all.filter(function (s) { return !s.country || s.country === 'ALL' || s.country === cc; });
     var community = (communityListings.length ? communityListings : cachedListings(cc))
@@ -1532,11 +1565,13 @@
         var hasContact = !!(s.whatsapp || s.tel);
         var badge = s.member ? '<span class="mbadge">' + esc(s.role || 'Member') + '</span>' : '';
         var howLine = (!hasContact && s.how) ? '<div class="show">ℹ️ ' + esc(s.how) + '</div>' : '';
+        var reportLine = (s.member && !own) ? '<button class="s-report">⚑ Report</button>' : '';
         var btn = own ? '<button class="s-contact s-edit">Edit</button>' : (hasContact ? '<button class="s-contact">Contact</button>' : '');
         var row = el('<div class="supplier' + (s.member ? ' is-member' : '') + '"><span class="sic">' + ic + '</span>' +
-          '<div class="sm"><div class="snm">' + esc(s.name) + badge + '</div><div class="scat">' + esc(s.loc || '') + '</div><div class="sit">' + esc(s.desc || s.items || '') + '</div>' + howLine + '</div>' + btn + '</div>');
+          '<div class="sm"><div class="snm">' + esc(s.name) + badge + '</div><div class="scat">' + esc(s.loc || '') + '</div><div class="sit">' + esc(s.desc || s.items || '') + '</div>' + howLine + reportLine + '</div>' + btn + '</div>');
         if (own) $('.s-contact', row).addEventListener('click', function () { openListingForm(s); });
         else if (hasContact) $('.s-contact', row).addEventListener('click', function () { contactSupplier(s); });
+        if (reportLine) $('.s-report', row).addEventListener('click', function () { openReportSheet(s); });
         v.appendChild(row);
       });
     });

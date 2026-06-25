@@ -107,7 +107,7 @@
   function addDays(n) { var d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); }
   function iso(y, m, d) { return new Date(y, m - 1, d).toISOString().slice(0, 10); }
   var YR = today().getFullYear();
-  var APP_VERSION = '1.7.0';
+  var APP_VERSION = '1.7.1';
   var CONTACT_EMAIL = 'info@maintainflow.pro';
   var CONTACT_TOPICS = ['Bug report', 'Feature request', 'Billing & Pro', 'Account & login', 'Partnership / sales', 'Something else'];
 
@@ -1398,13 +1398,10 @@
   var SERVICES_CATS = ['Markets & buyers', 'Funding & support', 'Animal health & vets', 'Extension & advice', 'Inputs & services'];
   var SERVICES_CAT_IC = { 'Markets & buyers': '🛒', 'Funding & support': '💰', 'Animal health & vets': '🩺', 'Extension & advice': '📚', 'Inputs & services': '🌱' };
   var SUPPLIERS_FALLBACK = [
-    { e: '🌾', name: 'BAMB — grain marketing board', cat: 'Markets & buyers', loc: 'National depots', desc: 'Buys & stores maize, sorghum, pulses & sunflower at producer prices.', how: 'Sell at your nearest BAMB depot.' },
-    { e: '🐄', name: 'BMC — Botswana Meat Commission', cat: 'Markets & buyers', loc: 'Lobatse · Francistown', desc: 'Buys cattle for slaughter & export, priced on weight and grade.', how: 'Book through a BMC feedlot or local agent.' },
-    { e: '🌱', name: 'ISPAAD', cat: 'Funding & support', loc: 'Min. of Agriculture', desc: 'Subsidised seed, fertilizer & ploughing for arable farmers.', how: 'Register at your Agricultural Extension Office.' },
-    { e: '🐐', name: 'LIMID', cat: 'Funding & support', loc: 'Min. of Agriculture', desc: 'Grants for small stock, poultry, boreholes, kraals & fencing.', how: 'Apply through your District Agricultural Office.' },
-    { e: '🩺', name: 'Dept. of Veterinary Services', cat: 'Animal health & vets', loc: 'Every district', desc: 'Vaccinations, disease control & movement permits.', how: 'Contact your local veterinary office.' },
-    { e: '📚', name: 'Agricultural Extension Office', cat: 'Extension & advice', loc: 'Every district', desc: 'Free agronomic & livestock advice, training and programme sign-up.', how: 'Usually your first stop for everything.' },
-    { e: '🌽', name: 'Agro-dealers', cat: 'Inputs & services', loc: 'Towns nationwide', desc: 'Seed, Compound D, LAN, urea, herbicides & fungicides.', how: 'Buy from licensed agro-dealers.' }
+    { e: '📚', name: 'Agricultural Extension Office', cat: 'Extension & advice', country: 'ALL', loc: 'Your district', desc: 'Free agronomic & livestock advice, training and programme sign-up.', how: 'Usually your first stop for everything.' },
+    { e: '🥬', name: 'Local fresh-produce markets', cat: 'Markets & buyers', country: 'ALL', loc: 'Towns nationwide', desc: 'Sell vegetables & horticulture direct to vendors, retailers & hotels.', how: 'Approach municipal markets or local retailers.' },
+    { e: '💉', name: 'Private vets & agro-vet shops', cat: 'Animal health & vets', country: 'ALL', loc: 'Major towns', desc: 'Vaccines, dipping chemicals, dewormers & treatment.', how: 'Find a registered vet or agro-vet near you.' },
+    { e: '🌽', name: 'Agro-dealers', cat: 'Inputs & services', country: 'ALL', loc: 'Towns nationwide', desc: 'Seed, fertilizer, herbicides & fungicides.', how: 'Buy from licensed agro-dealers.' }
   ];
   var suppliersData = null;
   function loadSuppliers(cb) {
@@ -1436,9 +1433,17 @@
     $('#backBtn').addEventListener('click', function () { go('fields'); });
     wireSyncPill(); updateSyncPill();
     loadSuppliers();
-    var list = suppliersData && suppliersData.length ? suppliersData : SUPPLIERS_FALLBACK;
+    var cc = (DB.settings && DB.settings.country) || 'BW';
+    var ci = countryInfo();
+    var all = suppliersData && suppliersData.length ? suppliersData : SUPPLIERS_FALLBACK;
+    var list = all.filter(function (s) { return !s.country || s.country === 'ALL' || s.country === cc; });
+    var hasLocal = list.some(function (s) { return s.country === cc; });
     var v = $('#view'); v.innerHTML = '';
     v.appendChild(el('<p class="hint">Services to grow, fund &amp; sell from your farm. Tap Contact (where shown) to reach one on WhatsApp.</p>'));
+    var cbar = el('<button class="loc-row" style="margin-bottom:12px"><span class="loc-ic">' + ci.flag + '</span><div class="loc-meta"><b>' + esc(ci.name) + '</b><span>Showing services for your country</span></div><span class="loc-link">Change</span></button>');
+    cbar.addEventListener('click', openRegionSheet);
+    v.appendChild(cbar);
+    if (!hasLocal) v.appendChild(el('<p class="hint" style="margin-top:-4px">We’re still adding ' + esc(ci.name) + '-specific programmes — these services apply across the region. Tip: tap Change if your country is set wrong.</p>'));
     var cats = SERVICES_CATS.slice();
     list.forEach(function (s) { if (cats.indexOf(s.cat) < 0) cats.push(s.cat || 'Other'); });
     cats.forEach(function (cat) {

@@ -53,6 +53,48 @@
 
     { "e": "📈", "name": "Bolsa de Mercadorias de Moçambique", "cat": "Markets & buyers", "country": "MZ", "loc": "Mozambique", "desc": "Commodity exchange linking farmers to buyers.", "how": "Trade grain & pulses through the exchange." },
     { "e": "🌱", "name": "SUSTENTA", "cat": "Funding & support", "country": "MZ", "loc": "Mozambique", "desc": "Integrated support programme financing inputs & value chains.", "how": "Register through your SDAE district office." },
-    { "e": "🩺", "name": "Serviços de Veterinária", "cat": "Animal health & vets", "country": "MZ", "loc": "Mozambique", "desc": "Vaccinations, disease control & livestock services.", "how": "Contact your district veterinary service." }
+    { "e": "🩺", "name": "Serviços de Veterinária", "cat": "Animal health & vets", "country": "MZ", "loc": "Mozambique", "desc": "Vaccinations, disease control & livestock services.", "how": "Contact your district veterinary service." },
+
+    { "e": "🌾", "name": "NCPB — National Cereals & Produce Board", "cat": "Markets & buyers", "country": "KE", "loc": "Kenya", "desc": "Buys maize & cereals and runs the national grain reserve.", "how": "Sell at your nearest NCPB depot." },
+    { "e": "🐄", "name": "Kenya Meat Commission (KMC)", "cat": "Markets & buyers", "country": "KE", "loc": "Kenya", "desc": "Buys cattle, sheep & goats for slaughter.", "how": "Market livestock through KMC or a registered agent." },
+    { "e": "🏦", "name": "Agricultural Finance Corporation (AFC)", "cat": "Funding & support", "country": "KE", "loc": "Kenya", "desc": "Affordable loans for inputs, equipment & livestock.", "how": "Apply at an AFC branch with your records." },
+    { "e": "🌱", "name": "National Fertilizer Subsidy (e-voucher)", "cat": "Funding & support", "country": "KE", "loc": "Kenya", "desc": "Subsidised fertilizer via registered e-voucher.", "how": "Register through your county agriculture office." },
+    { "e": "🩺", "name": "Directorate of Veterinary Services", "cat": "Animal health & vets", "country": "KE", "loc": "Kenya", "desc": "Vaccinations, disease control & livestock movement permits.", "how": "Contact your sub-county veterinary office." },
+
+    { "e": "🌾", "name": "National Food Reserve Agency (NFRA)", "cat": "Markets & buyers", "country": "TZ", "loc": "Tanzania", "desc": "Buys & stores maize for the national reserve.", "how": "Sell at an NFRA buying centre." },
+    { "e": "🤝", "name": "Cooperative unions / CPB", "cat": "Markets & buyers", "country": "TZ", "loc": "Tanzania", "desc": "Aggregate & market cereals and cash crops.", "how": "Market produce through your cooperative union." },
+    { "e": "🏦", "name": "Tanzania Agricultural Development Bank (TADB)", "cat": "Funding & support", "country": "TZ", "loc": "Tanzania", "desc": "Finance for inputs, equipment & value chains.", "how": "Apply through TADB or a partner bank." },
+    { "e": "🩺", "name": "Veterinary Services (Min. of Livestock)", "cat": "Animal health & vets", "country": "TZ", "loc": "Tanzania", "desc": "Vaccinations, dipping & disease control.", "how": "Contact your ward / district livestock office." },
+    { "e": "📚", "name": "Ward Agricultural Extension Officer", "cat": "Extension & advice", "country": "TZ", "loc": "Tanzania", "desc": "Local crop & livestock advice and programme sign-up.", "how": "Visit your ward agricultural office." },
+
+    { "e": "🏬", "name": "Warehouse Receipt System / UCE", "cat": "Markets & buyers", "country": "UG", "loc": "Uganda", "desc": "Store grain & sell via warehouse receipts and the commodity exchange.", "how": "Deposit grain at a certified warehouse." },
+    { "e": "🌱", "name": "Parish Development Model (PDM)", "cat": "Funding & support", "country": "UG", "loc": "Uganda", "desc": "Grassroots financing for farming households.", "how": "Join your parish SACCO to access PDM funds." },
+    { "e": "🏦", "name": "Uganda Development Bank (UDB)", "cat": "Funding & support", "country": "UG", "loc": "Uganda", "desc": "Agricultural & agro-processing finance.", "how": "Apply through UDB with a business plan." },
+    { "e": "🩺", "name": "District Veterinary Officer", "cat": "Animal health & vets", "country": "UG", "loc": "Uganda", "desc": "Vaccinations, disease control & animal treatment.", "how": "Contact your district production / vet office." },
+    { "e": "📚", "name": "Extension officers (NAADS)", "cat": "Extension & advice", "country": "UG", "loc": "Uganda", "desc": "Inputs, advisory & farmer support.", "how": "Reach your sub-county extension officer." },
+
+    { "e": "📈", "name": "AFEX / Nigeria Commodity Exchange", "cat": "Markets & buyers", "country": "NG", "loc": "Nigeria", "desc": "Warehouse receipts & commodity trading for grain.", "how": "Sell through an AFEX / NCX warehouse." },
+    { "e": "🏦", "name": "Bank of Agriculture (BOA)", "cat": "Funding & support", "country": "NG", "loc": "Nigeria", "desc": "Concessionary loans for farmers & agribusiness.", "how": "Apply at a BOA branch." },
+    { "e": "🌱", "name": "NIRSAL", "cat": "Funding & support", "country": "NG", "loc": "Nigeria", "desc": "Risk-sharing facility that unlocks bank lending to farmers.", "how": "Access via NIRSAL-partner banks." },
+    { "e": "🩺", "name": "State Veterinary Services", "cat": "Animal health & vets", "country": "NG", "loc": "Nigeria", "desc": "Vaccinations, disease control & animal health.", "how": "Contact your state veterinary clinic." },
+    { "e": "📚", "name": "ADP — Agricultural Development Programme", "cat": "Extension & advice", "country": "NG", "loc": "Nigeria", "desc": "State extension advice & input support.", "how": "Visit your state ADP office." },
+
+    { "e": "🌾", "name": "NAFCO — National Food Buffer Stock Co.", "cat": "Markets & buyers", "country": "GH", "loc": "Ghana", "desc": "Buys grain & produce to stabilise prices.", "how": "Sell to a NAFCO-licensed buying company." },
+    { "e": "📈", "name": "Ghana Commodity Exchange (GCX)", "cat": "Markets & buyers", "country": "GH", "loc": "Ghana", "desc": "Warehouse receipts & trading for maize, soya & more.", "how": "Deposit at a GCX-certified warehouse." },
+    { "e": "🌱", "name": "Planting for Food and Jobs (PFJ)", "cat": "Funding & support", "country": "GH", "loc": "Ghana", "desc": "Subsidised seed & fertilizer with extension support.", "how": "Register with MoFA at your district office." },
+    { "e": "🏦", "name": "Agricultural Development Bank (ADB)", "cat": "Funding & support", "country": "GH", "loc": "Ghana", "desc": "Loans for inputs, equipment & agribusiness.", "how": "Apply at an ADB branch." },
+    { "e": "🩺", "name": "Veterinary Services Directorate", "cat": "Animal health & vets", "country": "GH", "loc": "Ghana", "desc": "Vaccinations, disease control & animal health.", "how": "Contact your district veterinary office." },
+
+    { "e": "📈", "name": "East Africa Exchange (EAX)", "cat": "Markets & buyers", "country": "RW", "loc": "Rwanda", "desc": "Warehouse receipts & commodity trading.", "how": "Sell grain via an EAX warehouse." },
+    { "e": "🌍", "name": "NAEB — export crop board", "cat": "Markets & buyers", "country": "RW", "loc": "Rwanda", "desc": "National Agricultural Export Development Board — export markets.", "how": "Market export crops through NAEB." },
+    { "e": "🌱", "name": "Smart Nkunganire System", "cat": "Funding & support", "country": "RW", "loc": "Rwanda", "desc": "Subsidised seed & fertilizer e-subsidy.", "how": "Register through your agro-dealer / sector office." },
+    { "e": "🩺", "name": "RAB — animal resources board", "cat": "Animal health & vets", "country": "RW", "loc": "Rwanda", "desc": "Animal health, vaccination & advisory services.", "how": "Contact RAB or your sector vet." },
+    { "e": "📚", "name": "Twigire Muhinzi extension", "cat": "Extension & advice", "country": "RW", "loc": "Rwanda", "desc": "Farmer-to-farmer & sector agronomist advice.", "how": "Reach your sector agronomist / farmer promoter." },
+
+    { "e": "📈", "name": "Ethiopia Commodity Exchange (ECX)", "cat": "Markets & buyers", "country": "ET", "loc": "Ethiopia", "desc": "Trades coffee, sesame, grains & pulses.", "how": "Sell through an ECX member or cooperative union." },
+    { "e": "🤝", "name": "Cooperative unions", "cat": "Markets & buyers", "country": "ET", "loc": "Ethiopia", "desc": "Aggregate & market produce; supply inputs.", "how": "Join your local primary cooperative." },
+    { "e": "🏦", "name": "Development Bank of Ethiopia (DBE)", "cat": "Funding & support", "country": "ET", "loc": "Ethiopia", "desc": "Agricultural & agro-processing investment finance.", "how": "Apply through DBE." },
+    { "e": "🩺", "name": "Veterinary Services (Min. of Agriculture)", "cat": "Animal health & vets", "country": "ET", "loc": "Ethiopia", "desc": "Vaccinations & animal health services.", "how": "Contact your woreda livestock office." },
+    { "e": "📚", "name": "Development Agents (Farmer Training Centres)", "cat": "Extension & advice", "country": "ET", "loc": "Ethiopia", "desc": "Local agronomic & livestock advice and training.", "how": "Visit your kebele Farmer Training Centre." }
   ]
 }

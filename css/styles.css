@@ -299,6 +299,10 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;color:inhe
 .supplier{align-items:flex-start}
 .supplier .sic{align-self:center}
 .supplier .s-contact{align-self:center;background:var(--green);color:#fff;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:12px;padding:9px 14px;border-radius:10px;flex:0 0 auto}
+.supplier .s-edit{background:#fff;color:var(--green-deep);border:1px solid var(--hair)}
+.supplier.is-member{border-color:rgba(46,125,50,.35);box-shadow:0 1px 0 rgba(46,125,50,.06)}
+.mbadge{display:inline-block;font-size:9px;font-weight:700;letter-spacing:.03em;color:var(--green-deep);background:var(--green-soft);border-radius:6px;padding:2px 6px;margin-left:6px;vertical-align:middle;white-space:nowrap}
+.listing-cta{border:1.5px dashed rgba(46,125,50,.5);background:var(--green-soft)}
 .pro-list{margin:6px 0 16px;padding-left:18px;display:flex;flex-direction:column;gap:8px}
 .pro-list li{font-size:13px;line-height:1.4}
 .pro-list .soon{font-size:9.5px;font-weight:700;color:var(--gold-ink);background:rgba(232,169,60,.18);padding:2px 6px;border-radius:6px;margin-left:4px;vertical-align:middle}

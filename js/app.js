@@ -107,7 +107,7 @@
   function addDays(n) { var d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); }
   function iso(y, m, d) { return new Date(y, m - 1, d).toISOString().slice(0, 10); }
   var YR = today().getFullYear();
-  var APP_VERSION = '1.7.2';
+  var APP_VERSION = '1.8.0';
   var CONTACT_EMAIL = 'info@maintainflow.pro';
   var CONTACT_TOPICS = ['Bug report', 'Feature request', 'Billing & Pro', 'Account & login', 'Partnership / sales', 'Something else'];
 
@@ -1234,7 +1234,7 @@
     var pro = isPro(), b = window.MFAG_BILLING || {};
     var head = '<div class="modal-head"><h3>MaintainFlow Pro</h3><button class="x" id="mx">&times;</button></div>' +
       '<p class="modal-note">Tools for growing and financing your farm:</p>' +
-      '<ul class="pro-list"><li>Printable PDF records for lenders &amp; buyers</li><li>Yield &amp; herd analytics + lender summary</li><li>Priority support</li></ul>';
+      '<ul class="pro-list"><li>Printable PDF records for lenders &amp; buyers</li><li>Yield &amp; herd analytics + lender summary</li><li>List your business in the Agri-services directory</li><li>Priority support</li></ul>';
     var body;
     if (pro) {
       var until = (cloud.entitlement && cloud.entitlement.proUntil) ? ' · valid until ' + fmtDate(new Date(cloud.entitlement.proUntil).toISOString().slice(0, 10)) : '';
@@ -1425,6 +1425,73 @@
     if (s.tel) { window.location.href = 'tel:' + s.tel; return; }
     toast('No direct contact on file');
   }
+  /* ---- community listings: Pro members publish themselves as buyers/sellers/suppliers ---- */
+  var ROLES = [
+    { v: 'Buyer / off-taker', cat: 'Markets & buyers', e: '🤝' },
+    { v: 'Seller / producer', cat: 'Markets & buyers', e: '🧺' },
+    { v: 'Input supplier / agro-dealer', cat: 'Inputs & services', e: '🌾' },
+    { v: 'Service provider', cat: 'Inputs & services', e: '🚜' },
+    { v: 'Vet / animal health', cat: 'Animal health & vets', e: '🩺' }
+  ];
+  function roleInfo(v) { for (var i = 0; i < ROLES.length; i++) { if (ROLES[i].v === v) return ROLES[i]; } return ROLES[0]; }
+  var communityListings = [];
+  var listingsSub = null;   // { cc, unsub }
+  function cacheListings(cc, arr) { try { localStorage.setItem('mfag.listings.' + cc, JSON.stringify(arr)); } catch (e) {} }
+  function cachedListings(cc) { try { return JSON.parse(localStorage.getItem('mfag.listings.' + cc) || '[]'); } catch (e) { return []; } }
+  function subscribeListings(cc) {
+    if (!cloud.on || !cloud.db) return;                 // live updates need a signed-in session
+    if (listingsSub && listingsSub.cc === cc) return;   // already watching this country
+    if (listingsSub && listingsSub.unsub) { try { listingsSub.unsub(); } catch (e) {} }
+    try {
+      var unsub = cloud.db.collection('listings').where('country', '==', cc).onSnapshot(function (qs) {
+        var arr = [];
+        qs.forEach(function (d) { var x = d.data(); if (x && x.active !== false) { x._id = d.id; x.member = true; arr.push(x); } });
+        communityListings = arr; cacheListings(cc, arr);
+        if (state.view === 'suppliers') render();
+      }, function () {});
+      listingsSub = { cc: cc, unsub: unsub };
+    } catch (e) {}
+  }
+  function unsubscribeListings() { if (listingsSub && listingsSub.unsub) { try { listingsSub.unsub(); } catch (e) {} } listingsSub = null; communityListings = []; }
+  function startListing() {
+    if (!cloudConfigured()) { toast('Sign-in isn’t set up yet'); return; }
+    if (!cloud.on) { toast('Sign in to list your business'); promptSignIn(); return; }
+    requirePro(function () { openListingForm(cloud.myListing || null); });
+  }
+  function openListingForm(ed) {
+    var cc = (ed && ed.country) || (DB.settings && DB.settings.country) || 'BW';
+    var host = openModal(
+      '<div class="modal-head"><h3>' + (ed ? 'Edit your listing' : 'List your business') + '</h3><button class="x" id="mx">&times;</button></div>' +
+      '<div class="field-group"><label>I am a…</label><select id="loRole">' + ROLES.map(function (r) { return '<option' + (ed && ed.role === r.v ? ' selected' : '') + '>' + r.v + '</option>'; }).join('') + '</select></div>' +
+      '<div class="field-group"><label>Business / your name</label><input id="loName" maxlength="80" value="' + esc(ed ? ed.name : '') + '" placeholder="e.g. Pula Grain Traders"></div>' +
+      '<div class="field-group"><label>What you buy / sell / offer</label><input id="loDesc" maxlength="240" value="' + esc(ed ? ed.desc : '') + '" placeholder="e.g. Buys maize &amp; sorghum at market rates"></div>' +
+      '<div class="row2"><div class="field-group"><label>Location</label><input id="loLoc" value="' + esc(ed ? ed.loc : '') + '" placeholder="Town / district"></div>' +
+      '<div class="field-group"><label>Country</label><select id="loCountry">' + Object.keys(COUNTRIES).filter(function (k) { return k !== 'OT'; }).map(function (k) { return '<option value="' + k + '"' + (k === cc ? ' selected' : '') + '>' + COUNTRIES[k].flag + ' ' + COUNTRIES[k].name + '</option>'; }).join('') + '</select></div></div>' +
+      '<div class="field-group"><label>WhatsApp number (with country code)</label><input id="loWa" type="tel" inputmode="tel" value="' + esc(ed ? (ed.whatsapp || '') : '') + '" placeholder="e.g. 26771234567"></div>' +
+      '<p class="hint">Your listing is public to other farmers in your country. Keep it accurate and respectful.</p>' +
+      '<button class="btn-primary" id="loSave">' + (ed ? 'Save changes' : 'Publish listing') + '</button>' +
+      (ed ? '<button class="btn-danger" id="loDel">Remove my listing</button>' : ''));
+    $('#mx', host).onclick = closeModal;
+    $('#loSave', host).onclick = function () {
+      var role = $('#loRole', host).value;
+      var name = $('#loName', host).value.trim();
+      var desc = $('#loDesc', host).value.trim();
+      var wa = $('#loWa', host).value.replace(/\D/g, '');
+      if (name.length < 2) { toast('Enter your business name'); return; }
+      if (!desc) { toast('Say what you buy, sell or offer'); return; }
+      if (wa.length < 7) { toast('Enter a valid WhatsApp number'); return; }
+      var data = { uid: cloud.uid, name: name, role: role, cat: roleInfo(role).cat, country: $('#loCountry', host).value || cc, loc: $('#loLoc', host).value.trim(), desc: desc, whatsapp: wa, tel: '', active: true, updatedAt: Date.now() };
+      $('#loSave', host).disabled = true;
+      cloud.db.collection('listings').doc(cloud.uid).set(data).then(function () {
+        track('listing_published', { role: role });
+        closeModal(); render(); toast(ed ? 'Listing updated' : 'Published — other farmers can find you 🎉');
+      }).catch(function () { $('#loSave', host).disabled = false; toast('Couldn’t publish — check your connection'); });
+    };
+    if (ed) $('#loDel', host).onclick = function () {
+      cloud.db.collection('listings').doc(cloud.uid).delete().then(function () { closeModal(); render(); toast('Listing removed'); }).catch(function () { toast('Couldn’t remove — try again'); });
+    };
+  }
+
   function viewSuppliers() {
     $('#topbar').innerHTML =
       '<div class="tb-back"><button class="bk" id="backBtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg></button>' +
@@ -1435,14 +1502,23 @@
     loadSuppliers();
     var cc = (DB.settings && DB.settings.country) || 'BW';
     var ci = countryInfo();
+    subscribeListings(cc);
     var all = suppliersData && suppliersData.length ? suppliersData : SUPPLIERS_FALLBACK;
-    var list = all.filter(function (s) { return !s.country || s.country === 'ALL' || s.country === cc; });
+    var curated = all.filter(function (s) { return !s.country || s.country === 'ALL' || s.country === cc; });
+    var community = (communityListings.length ? communityListings : cachedListings(cc))
+      .filter(function (s) { return s.country === cc && s.active !== false; })
+      .map(function (s) { s.member = true; return s; });
+    var list = curated.concat(community);
     var hasLocal = list.some(function (s) { return s.country === cc; });
     var v = $('#view'); v.innerHTML = '';
     v.appendChild(el('<p class="hint">Services to grow, fund &amp; sell from your farm. Tap Contact (where shown) to reach one on WhatsApp.</p>'));
     var cbar = el('<button class="loc-row" style="margin-bottom:12px"><span class="loc-ic">' + ci.flag + '</span><div class="loc-meta"><b>' + esc(ci.name) + '</b><span>Showing services for your country</span></div><span class="loc-link">Change</span></button>');
     cbar.addEventListener('click', openRegionSheet);
     v.appendChild(cbar);
+    var mine = cloud.myListing;
+    var cta = el('<button class="link-card listing-cta"><span class="lc-ic">' + (mine ? '✏️' : '➕') + '</span><div class="lc-t"><b>' + (mine ? 'Your listing is live' : 'List your business') + '</b><span>' + (mine ? 'Tap to edit or remove it' : 'Add yourself as a buyer, seller or supplier') + '</span></div><span class="lc-arrow">›</span></button>');
+    cta.addEventListener('click', startListing);
+    v.appendChild(cta);
     if (!hasLocal) v.appendChild(el('<p class="hint" style="margin-top:-4px">We’re still adding ' + esc(ci.name) + '-specific programmes — these services apply across the region. Tip: tap Change if your country is set wrong.</p>'));
     var cats = SERVICES_CATS.slice();
     list.forEach(function (s) { if (cats.indexOf(s.cat) < 0) cats.push(s.cat || 'Other'); });
@@ -1451,12 +1527,16 @@
       if (!items.length) return;
       v.appendChild(el('<div class="sec-h" style="margin-top:8px"><h3>' + (SERVICES_CAT_IC[cat] || '•') + ' ' + esc(cat) + '</h3></div>'));
       items.forEach(function (s) {
+        var own = !!(s.member && cloud.uid && s._id === cloud.uid);
+        var ic = s.e || (s.member ? roleInfo(s.role).e : '🏬');
         var hasContact = !!(s.whatsapp || s.tel);
+        var badge = s.member ? '<span class="mbadge">' + esc(s.role || 'Member') + '</span>' : '';
         var howLine = (!hasContact && s.how) ? '<div class="show">ℹ️ ' + esc(s.how) + '</div>' : '';
-        var row = el('<div class="supplier"><span class="sic">' + (s.e || '🏬') + '</span>' +
-          '<div class="sm"><div class="snm">' + esc(s.name) + '</div><div class="scat">' + esc(s.loc || '') + '</div><div class="sit">' + esc(s.desc || s.items || '') + '</div>' + howLine + '</div>' +
-          (hasContact ? '<button class="s-contact">Contact</button>' : '') + '</div>');
-        if (hasContact) $('.s-contact', row).addEventListener('click', function () { contactSupplier(s); });
+        var btn = own ? '<button class="s-contact s-edit">Edit</button>' : (hasContact ? '<button class="s-contact">Contact</button>' : '');
+        var row = el('<div class="supplier' + (s.member ? ' is-member' : '') + '"><span class="sic">' + ic + '</span>' +
+          '<div class="sm"><div class="snm">' + esc(s.name) + badge + '</div><div class="scat">' + esc(s.loc || '') + '</div><div class="sit">' + esc(s.desc || s.items || '') + '</div>' + howLine + '</div>' + btn + '</div>');
+        if (own) $('.s-contact', row).addEventListener('click', function () { openListingForm(s); });
+        else if (hasContact) $('.s-contact', row).addEventListener('click', function () { contactSupplier(s); });
         v.appendChild(row);
       });
     });
@@ -2056,12 +2136,22 @@
       cloud.entitlement = snap.exists ? snap.data() : null;
       if (booted) render();
     }, function () {});
+
+    // The user's own community listing (so we can prefill edit + show its status).
+    if (cloud.listingUnsub) { try { cloud.listingUnsub(); } catch (e) {} }
+    cloud.myListing = null;
+    cloud.listingUnsub = cloud.db.collection('listings').doc(cloud.uid).onSnapshot(function (snap) {
+      cloud.myListing = snap.exists ? snap.data() : null;
+      if (booted && state.view === 'suppliers') render();
+    }, function () {});
   }
 
   function cloudSignOut() {
     if (cloud.unsub) { try { cloud.unsub(); } catch (e) {} cloud.unsub = null; }
     if (cloud.entUnsub) { try { cloud.entUnsub(); } catch (e) {} cloud.entUnsub = null; }
-    cloud.entitlement = null;
+    if (cloud.listingUnsub) { try { cloud.listingUnsub(); } catch (e) {} cloud.listingUnsub = null; }
+    unsubscribeListings();
+    cloud.entitlement = null; cloud.myListing = null;
     cloud.on = false; cloud.uid = null; cloud.email = null;
     try { localStorage.removeItem('mfag.lastUid'); } catch (e) {}
     if (cloud.auth) cloud.auth.signOut();

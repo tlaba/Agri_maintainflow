@@ -107,7 +107,7 @@
   function addDays(n) { var d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); }
   function iso(y, m, d) { return new Date(y, m - 1, d).toISOString().slice(0, 10); }
   var YR = today().getFullYear();
-  var APP_VERSION = '1.6.1';
+  var APP_VERSION = '1.7.0';
   var CONTACT_EMAIL = 'info@maintainflow.pro';
   var CONTACT_TOPICS = ['Bug report', 'Feature request', 'Billing & Pro', 'Account & login', 'Partnership / sales', 'Something else'];
 
@@ -323,8 +323,8 @@
       '</div>'));
     // weather forecast (sample — works offline)
     v.appendChild(weatherCard());
-    // input-supplier marketplace entry
-    var sup = el('<button class="link-card"><span class="lc-ic">🛒</span><div class="lc-t"><b>Input suppliers</b><span>Seed, fertilizer, chemicals &amp; services</span></div><span class="lc-arrow">›</span></button>');
+    // agri-services hub entry
+    var sup = el('<button class="link-card"><span class="lc-ic">🤝</span><div class="lc-t"><b>Agri services</b><span>Markets, funding, vets, advice &amp; inputs</span></div><span class="lc-arrow">›</span></button>');
     sup.addEventListener('click', function () { go('suppliers'); });
     v.appendChild(sup);
     v.appendChild(el('<div class="sec-h"><h3>Your fields</h3><span class="link" id="addField2">+ Add field</span></div>'));
@@ -1234,7 +1234,7 @@
     var pro = isPro(), b = window.MFAG_BILLING || {};
     var head = '<div class="modal-head"><h3>MaintainFlow Pro</h3><button class="x" id="mx">&times;</button></div>' +
       '<p class="modal-note">Tools for growing and financing your farm:</p>' +
-      '<ul class="pro-list"><li>Printable PDF records for lenders &amp; buyers</li><li>Yield analytics &amp; lender summary</li><li>Input-supplier marketplace &amp; quotes</li><li>Priority support</li></ul>';
+      '<ul class="pro-list"><li>Printable PDF records for lenders &amp; buyers</li><li>Yield &amp; herd analytics + lender summary</li><li>Priority support</li></ul>';
     var body;
     if (pro) {
       var until = (cloud.entitlement && cloud.entitlement.proUntil) ? ' · valid until ' + fmtDate(new Date(cloud.entitlement.proUntil).toISOString().slice(0, 10)) : '';
@@ -1394,13 +1394,24 @@
     { e: '🚜', name: 'FarmMech Hire', cat: 'Mechanisation', loc: 'Lobatse', items: 'Tractor, planter & sprayer hire; land prep', tel: '+2675330000', whatsapp: '2675330000' },
     { e: '💧', name: 'Kalahari Irrigation', cat: 'Irrigation', loc: 'Gaborone', items: 'Drip kits, pumps, piping & boreholes', tel: '+2673950000', whatsapp: '2673950000' }
   ];
-  var SUP_KEY = 'mfag.suppliers';
+  var SUP_KEY = 'mfag.services';
+  var SERVICES_CATS = ['Markets & buyers', 'Funding & support', 'Animal health & vets', 'Extension & advice', 'Inputs & services'];
+  var SERVICES_CAT_IC = { 'Markets & buyers': '🛒', 'Funding & support': '💰', 'Animal health & vets': '🩺', 'Extension & advice': '📚', 'Inputs & services': '🌱' };
+  var SUPPLIERS_FALLBACK = [
+    { e: '🌾', name: 'BAMB — grain marketing board', cat: 'Markets & buyers', loc: 'National depots', desc: 'Buys & stores maize, sorghum, pulses & sunflower at producer prices.', how: 'Sell at your nearest BAMB depot.' },
+    { e: '🐄', name: 'BMC — Botswana Meat Commission', cat: 'Markets & buyers', loc: 'Lobatse · Francistown', desc: 'Buys cattle for slaughter & export, priced on weight and grade.', how: 'Book through a BMC feedlot or local agent.' },
+    { e: '🌱', name: 'ISPAAD', cat: 'Funding & support', loc: 'Min. of Agriculture', desc: 'Subsidised seed, fertilizer & ploughing for arable farmers.', how: 'Register at your Agricultural Extension Office.' },
+    { e: '🐐', name: 'LIMID', cat: 'Funding & support', loc: 'Min. of Agriculture', desc: 'Grants for small stock, poultry, boreholes, kraals & fencing.', how: 'Apply through your District Agricultural Office.' },
+    { e: '🩺', name: 'Dept. of Veterinary Services', cat: 'Animal health & vets', loc: 'Every district', desc: 'Vaccinations, disease control & movement permits.', how: 'Contact your local veterinary office.' },
+    { e: '📚', name: 'Agricultural Extension Office', cat: 'Extension & advice', loc: 'Every district', desc: 'Free agronomic & livestock advice, training and programme sign-up.', how: 'Usually your first stop for everything.' },
+    { e: '🌽', name: 'Agro-dealers', cat: 'Inputs & services', loc: 'Towns nationwide', desc: 'Seed, Compound D, LAN, urea, herbicides & fungicides.', how: 'Buy from licensed agro-dealers.' }
+  ];
   var suppliersData = null;
   function loadSuppliers(cb) {
     if (!suppliersData) { try { var c = JSON.parse(localStorage.getItem(SUP_KEY) || 'null'); if (c && c.length) suppliersData = c; } catch (e) {} }
     if (window.fetch) {
-      fetch('suppliers.json', { cache: 'no-cache' }).then(function (r) { return r.json(); }).then(function (j) {
-        var list = (j && j.suppliers) || (Array.isArray(j) ? j : null);
+      fetch('agriservices.json', { cache: 'no-cache' }).then(function (r) { return r.json(); }).then(function (j) {
+        var list = (j && j.services) || (j && j.suppliers) || (Array.isArray(j) ? j : null);
         if (!list || !list.length) return;
         var s = JSON.stringify(list);
         if (s === JSON.stringify(suppliersData)) return;     // unchanged → no re-render
@@ -1413,27 +1424,36 @@
   }
   function contactSupplier(s) {
     var num = (s.whatsapp || '').replace(/\D/g, '');
-    if (num) { window.open('https://wa.me/' + num + '?text=' + encodeURIComponent('Hello ' + s.name + ', I’m a MaintainFlow Ag farmer and would like a quote.'), '_blank', 'noopener'); return; }
+    if (num) { window.open('https://wa.me/' + num + '?text=' + encodeURIComponent('Hello ' + s.name + ', I’m a MaintainFlow Ag farmer and would like more information.'), '_blank', 'noopener'); return; }
     if (s.tel) { window.location.href = 'tel:' + s.tel; return; }
-    toast('No contact on file for ' + s.name);
+    toast('No direct contact on file');
   }
   function viewSuppliers() {
     $('#topbar').innerHTML =
       '<div class="tb-back"><button class="bk" id="backBtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg></button>' +
       '<button class="offline" id="syncPill" type="button" style="margin-left:auto"><span class="dot"></span><span id="syncText">Offline-ready</span></button></div>' +
-      '<div class="tb-title"><div class="t">Input suppliers</div><div class="row">Seed, fertilizer, chemicals &amp; services</div></div>';
+      '<div class="tb-title"><div class="t">Agri services</div><div class="row">Markets, funding, vets, advice &amp; inputs</div></div>';
     $('#backBtn').addEventListener('click', function () { go('fields'); });
     wireSyncPill(); updateSyncPill();
     loadSuppliers();
     var list = suppliersData && suppliersData.length ? suppliersData : SUPPLIERS_FALLBACK;
     var v = $('#view'); v.innerHTML = '';
-    v.appendChild(el('<p class="hint">' + (isPro() ? 'Tap Quote to message a supplier on WhatsApp.' : 'Requesting a quote is a Pro feature.') + '</p>'));
-    list.forEach(function (s) {
-      var row = el('<div class="supplier"><span class="sic">' + (s.e || '🏬') + '</span>' +
-        '<div class="sm"><div class="snm">' + esc(s.name) + '</div><div class="scat">' + esc(s.cat || '') + (s.loc ? ' · ' + esc(s.loc) : '') + '</div><div class="sit">' + esc(s.items || '') + '</div></div>' +
-        '<button class="s-contact">Quote</button></div>');
-      $('.s-contact', row).addEventListener('click', function () { requirePro(function () { contactSupplier(s); }); });
-      v.appendChild(row);
+    v.appendChild(el('<p class="hint">Services to grow, fund &amp; sell from your farm. Tap Contact (where shown) to reach one on WhatsApp.</p>'));
+    var cats = SERVICES_CATS.slice();
+    list.forEach(function (s) { if (cats.indexOf(s.cat) < 0) cats.push(s.cat || 'Other'); });
+    cats.forEach(function (cat) {
+      var items = list.filter(function (s) { return (s.cat || 'Other') === cat; });
+      if (!items.length) return;
+      v.appendChild(el('<div class="sec-h" style="margin-top:8px"><h3>' + (SERVICES_CAT_IC[cat] || '•') + ' ' + esc(cat) + '</h3></div>'));
+      items.forEach(function (s) {
+        var hasContact = !!(s.whatsapp || s.tel);
+        var howLine = (!hasContact && s.how) ? '<div class="show">ℹ️ ' + esc(s.how) + '</div>' : '';
+        var row = el('<div class="supplier"><span class="sic">' + (s.e || '🏬') + '</span>' +
+          '<div class="sm"><div class="snm">' + esc(s.name) + '</div><div class="scat">' + esc(s.loc || '') + '</div><div class="sit">' + esc(s.desc || s.items || '') + '</div>' + howLine + '</div>' +
+          (hasContact ? '<button class="s-contact">Contact</button>' : '') + '</div>');
+        if (hasContact) $('.s-contact', row).addEventListener('click', function () { contactSupplier(s); });
+        v.appendChild(row);
+      });
     });
     hideFab();
   }
@@ -1573,7 +1593,7 @@
     // Reference & marketplace
     sec('Reference');
     v.appendChild(row('🐛', 'Pest & disease library', '', function () { go('pests'); }));
-    v.appendChild(row('🛒', 'Input suppliers', '', function () { go('suppliers'); }));
+    v.appendChild(row('🤝', 'Agri services', '', function () { go('suppliers'); }));
 
     // Support
     sec('Support');

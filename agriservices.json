@@ -1,0 +1,23 @@
+{
+  "updated": "2026-06-21",
+  "note": "Regional agri-services directory grouped by `cat`. Served same-origin and cached offline; the app falls back to a built-in set if this can't load. Botswana-led by default — edit/extend per country. Add `tel`/`whatsapp` to any entry to show a WhatsApp 'Contact' button; entries without a number show their `how` (how-to-access) note instead.",
+  "services": [
+    { "e": "🌾", "name": "BAMB — Botswana Agricultural Marketing Board", "cat": "Markets & buyers", "loc": "National depots", "desc": "Buys & stores grain — maize, sorghum, pulses & sunflower — at announced producer prices.", "how": "Sell at your nearest BAMB depot or strategic grain reserve." },
+    { "e": "🐄", "name": "BMC — Botswana Meat Commission", "cat": "Markets & buyers", "loc": "Lobatse · Francistown · Maun", "desc": "Buys cattle for slaughter & export, priced on weight and grade.", "how": "Book through a BMC feedlot or your local cattle agent." },
+    { "e": "🥬", "name": "Fresh-produce markets & retailers", "cat": "Markets & buyers", "loc": "Towns nationwide", "desc": "Sell vegetables & horticulture direct to vendors, supermarkets, schools & hotels.", "how": "Approach municipal markets or supply local retailers directly." },
+
+    { "e": "🌱", "name": "ISPAAD", "cat": "Funding & support", "loc": "Min. of Agriculture", "desc": "Integrated Support Programme for Arable Agriculture Development — subsidised seed, fertilizer & ploughing.", "how": "Register at your nearest Agricultural Extension Office." },
+    { "e": "🐐", "name": "LIMID", "cat": "Funding & support", "loc": "Min. of Agriculture", "desc": "Livestock Management & Infrastructure Development — grants for small stock, poultry, boreholes, kraals & fencing.", "how": "Apply through your District Agricultural Office." },
+    { "e": "🏦", "name": "CEDA", "cat": "Funding & support", "loc": "Citizen Entrepreneurial Dev. Agency", "desc": "Subsidised loans for agribusiness start-up & expansion.", "how": "Apply at a CEDA branch with a business plan — your farm records strengthen it." },
+    { "e": "🏛️", "name": "NDB", "cat": "Funding & support", "loc": "National Development Bank", "desc": "Agricultural loans for equipment, land development & livestock.", "how": "Visit an NDB branch; bring your cost & yield records." },
+
+    { "e": "🩺", "name": "Dept. of Veterinary Services (DVS)", "cat": "Animal health & vets", "loc": "Every district", "desc": "Vaccinations, disease control, movement permits & livestock identification (BAITS).", "how": "Contact your local veterinary or extension office." },
+    { "e": "💉", "name": "Private vets & agro-vet shops", "cat": "Animal health & vets", "loc": "Major towns", "desc": "Vaccines, dipping chemicals, dewormers & animal treatment.", "how": "Find a registered vet or agro-vet in your district." },
+
+    { "e": "📚", "name": "Agricultural Extension Office", "cat": "Extension & advice", "loc": "Every district", "desc": "Free agronomic & livestock advice, training and programme registration.", "how": "Your nearest extension office is usually your first stop for everything." },
+    { "e": "🔬", "name": "Dept. of Agricultural Research (DAR)", "cat": "Extension & advice", "loc": "Botswana", "desc": "Recommended seed varieties, soil management & climate-smart practices.", "how": "Ask your extension officer for the latest DAR guidance." },
+
+    { "e": "🌽", "name": "Agro-dealers (seed, fertilizer, chemicals)", "cat": "Inputs & services", "loc": "Towns nationwide", "desc": "Maize & sorghum seed, Compound D, LAN, urea, herbicides & fungicides.", "how": "Buy from licensed agro-dealers and ask for advice on application rates." },
+    { "e": "🚜", "name": "Mechanisation & irrigation hire", "cat": "Inputs & services", "loc": "Regional", "desc": "Tractor, planter & sprayer hire; drip kits, pumps, piping & boreholes.", "how": "Hire through local service providers or your farmer co-operative." }
+  ]
+}

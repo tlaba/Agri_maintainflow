@@ -1,5 +1,5 @@
 /* MaintainFlow Ag — service worker (offline-first) */
-var VERSION = 'mfag-v1.6.1';
+var VERSION = 'mfag-v1.7.0';
 var CORE = [
   './',
   './index.html',
@@ -8,7 +8,7 @@ var CORE = [
   './js/firebase-config.js',
   './js/billing-config.js',
   './js/analytics-config.js',
-  './suppliers.json',
+  './agriservices.json',
   './manifest.webmanifest',
   './icons/icon-192.png',
   './icons/icon-512.png',

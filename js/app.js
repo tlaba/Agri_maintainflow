@@ -107,7 +107,7 @@
   function addDays(n) { var d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); }
   function iso(y, m, d) { return new Date(y, m - 1, d).toISOString().slice(0, 10); }
   var YR = today().getFullYear();
-  var APP_VERSION = '1.8.1';
+  var APP_VERSION = '1.8.2';
   var CONTACT_EMAIL = 'info@maintainflow.pro';
   var CONTACT_TOPICS = ['Bug report', 'Feature request', 'Billing & Pro', 'Account & login', 'Partnership / sales', 'Something else'];
 
@@ -1486,6 +1486,56 @@
     $('#mx', host).onclick = closeModal;
     host.querySelectorAll('.rp').forEach(function (btn) { btn.onclick = function () { reportListing(s, btn.getAttribute('data-r')); closeModal(); }; });
   }
+
+  /* ---- moderation admin view (admins/{uid} doc grants access) ---- */
+  function dismissReports(reps) { reps.forEach(function (r) { try { cloud.db.collection('reports').doc(r.id).delete(); } catch (e) {} }); }
+  function renderAdminCard(v, id, reps) {
+    var reasons = {}; reps.forEach(function (r) { reasons[r.reason] = (reasons[r.reason] || 0) + 1; });
+    var rtxt = Object.keys(reasons).map(function (k) { return esc(k) + ' ×' + reasons[k]; }).join(' · ');
+    var card = el('<div class="admin-card"><div class="ac-body">Loading…</div></div>');
+    v.appendChild(card);
+    cloud.db.collection('listings').doc(id).get().then(function (snap) {
+      var L = snap.exists ? snap.data() : null;
+      var hidden = !!(L && L.hidden === true);
+      var head = L
+        ? '<div class="snm">' + esc(L.name || '(unnamed)') + (hidden ? ' <span class="mbadge ac-hid">Hidden</span>' : '') + '</div>' +
+          '<div class="scat">' + esc((L.role || '') + (L.loc ? ' · ' + L.loc : '') + ' · ' + (L.country || '')) + '</div>' +
+          '<div class="sit">' + esc(L.desc || '') + '</div>'
+        : '<div class="snm">(listing already removed)</div>';
+      card.querySelector('.ac-body').innerHTML = head +
+        '<div class="ac-reports">⚑ ' + reps.length + ' report' + (reps.length === 1 ? '' : 's') + (rtxt ? ' · ' + rtxt : '') + '</div>' +
+        '<div class="ac-actions">' +
+          (L ? '<button class="ac-btn" data-a="hide">' + (hidden ? 'Unhide' : 'Hide') + '</button>' +
+               '<button class="ac-btn danger" data-a="del">Delete</button>' : '') +
+          '<button class="ac-btn" data-a="dismiss">Dismiss reports</button>' +
+        '</div>';
+      function byA(a) { return card.querySelector('[data-a="' + a + '"]'); }
+      if (L && byA('hide')) byA('hide').onclick = function () {
+        cloud.db.collection('listings').doc(id).set({ hidden: !hidden }, { merge: true }).then(function () { toast(hidden ? 'Listing restored' : 'Listing hidden'); go('admin'); }).catch(function () { toast('Action failed'); });
+      };
+      if (L && byA('del')) byA('del').onclick = function () {
+        cloud.db.collection('listings').doc(id).delete().then(function () { dismissReports(reps); toast('Listing deleted'); go('admin'); }).catch(function () { toast('Delete failed'); });
+      };
+      if (byA('dismiss')) byA('dismiss').onclick = function () { dismissReports(reps); toast('Reports cleared'); setTimeout(function () { go('admin'); }, 300); };
+    }).catch(function () { card.querySelector('.ac-body').innerHTML = '<div class="snm">Couldn’t load listing</div>'; });
+  }
+  function viewAdmin() {
+    backTopbar('Moderation', 'Reported listings');
+    var v = $('#view'); v.innerHTML = '';
+    if (!cloud.on || !cloud.isAdmin) { v.appendChild(emptyState('Admins only', 'You don’t have moderation access.')); hideFab(); return; }
+    v.appendChild(el('<p class="hint">Loading reports…</p>'));
+    cloud.db.collection('reports').get().then(function (qs) {
+      var byL = {};
+      qs.forEach(function (d) { var r = d.data() || {}; if (!r.listingUid) return; (byL[r.listingUid] = byL[r.listingUid] || []).push({ id: d.id, reason: r.reason || '—' }); });
+      var ids = Object.keys(byL);
+      v.innerHTML = '';
+      v.appendChild(el('<p class="hint">Listings reported by farmers. Hidden listings are removed from the directory but kept here.</p>'));
+      if (!ids.length) { v.appendChild(emptyState('All clear', 'No reported listings right now.')); return; }
+      v.appendChild(el('<div class="sec-h"><h3>Reported</h3><span class="link">' + ids.length + '</span></div>'));
+      ids.forEach(function (id) { renderAdminCard(v, id, byL[id]); });
+    }).catch(function () { v.innerHTML = ''; v.appendChild(emptyState('Couldn’t load', 'Check your connection or admin access.')); });
+    hideFab();
+  }
   function startListing() {
     if (!cloudConfigured()) { toast('Sign-in isn’t set up yet'); return; }
     if (!cloud.on) { toast('Sign in to list your business'); promptSignIn(); return; }
@@ -1718,6 +1768,7 @@
     // Support
     sec('Support');
     v.appendChild(row('✉️', 'Contact us', '', function () { openContactSheet(); }));
+    if (cloud.isAdmin) v.appendChild(row('🛡️', 'Moderation', '', function () { go('admin'); }));
 
     // Settings
     sec('Settings');
@@ -1860,7 +1911,7 @@
   function render() {
     normalizeDB();
     document.querySelectorAll('.nav-item').forEach(function (b) {
-      var moreish = ['suppliers', 'analytics', 'lender', 'pests', 'more'].indexOf(state.view) >= 0;
+      var moreish = ['suppliers', 'analytics', 'lender', 'pests', 'admin', 'more'].indexOf(state.view) >= 0;
       var match = b.dataset.view === state.view || ((state.view === 'field' || state.view === 'herd') && b.dataset.view === 'fields') || (moreish && b.dataset.view === 'more');
       b.classList.toggle('on', match);
     });
@@ -1874,6 +1925,7 @@
     else if (state.view === 'analytics') viewAnalytics();
     else if (state.view === 'lender') viewLender();
     else if (state.view === 'equipment') viewEquipment();
+    else if (state.view === 'admin') viewAdmin();
     else if (state.view === 'more') viewMore();
     syncInstallBanner();
   }
@@ -2179,6 +2231,12 @@
       cloud.myListing = snap.exists ? snap.data() : null;
       if (booted && state.view === 'suppliers') render();
     }, function () {});
+
+    // Moderator? (admins/{uid} doc created manually in the console.)
+    cloud.isAdmin = false;
+    cloud.db.collection('admins').doc(cloud.uid).get().then(function (snap) {
+      cloud.isAdmin = snap.exists; if (snap.exists && booted) render();
+    }).catch(function () {});
   }
 
   function cloudSignOut() {

@@ -126,3 +126,42 @@ exports.stripeWebhook = onRequest({ secrets: [STRIPE_SECRET, STRIPE_WEBHOOK_SECR
     response.status(200).send('ok'); // ack so Stripe doesn't retry-storm; check logs
   }
 });
+
+/* ===================================================================
+   Community Agri-services directory: moderation + public mirror.
+   =================================================================== */
+const { onDocumentWritten, onDocumentCreated } = require('firebase-functions/v2/firestore');
+
+const REPORT_THRESHOLD = 3; // distinct reports that auto-hide a listing
+
+// Rebuild the world-readable mirror whenever any listing changes, so guests
+// (who never load the SDK) can fetch active, non-hidden listings via the
+// Firestore REST API. Stored as a single JSON string for trivial parsing.
+exports.onListingWritten = onDocumentWritten('listings/{uid}', async () => {
+  const snap = await db.collection('listings').get();
+  const out = [];
+  snap.forEach((doc) => {
+    const x = doc.data() || {};
+    if (x.active === false || x.hidden === true) return;
+    out.push({
+      uid: doc.id, name: x.name || '', role: x.role || '', cat: x.cat || '',
+      country: x.country || '', loc: x.loc || '', desc: x.desc || '',
+      whatsapp: x.whatsapp || '', tel: x.tel || ''
+    });
+  });
+  await db.collection('public').doc('listings').set({
+    json: JSON.stringify(out), count: out.length, updatedAt: Date.now()
+  });
+});
+
+// When a report comes in, count distinct reports for that listing and hide it
+// once it crosses the threshold. Hiding is a backend-only write, so the owner
+// cannot reverse it from the app (see firestore.rules).
+exports.onReportCreated = onDocumentCreated('reports/{rid}', async (event) => {
+  const r = event.data && event.data.data();
+  if (!r || !r.listingUid) return;
+  const reps = await db.collection('reports').where('listingUid', '==', r.listingUid).get();
+  if (reps.size >= REPORT_THRESHOLD) {
+    await db.collection('listings').doc(String(r.listingUid)).set({ hidden: true }, { merge: true });
+  }
+});

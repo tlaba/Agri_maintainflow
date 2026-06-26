@@ -20,7 +20,7 @@
   function save() {
     anStamp(); anActivation();   // analytics: createdAt/lastActive + activation milestone
     if (!STORE_OK) { mem = DB; }
-    else { try { localStorage.setItem(storeKey(), JSON.stringify(DB)); } catch (e) {} }
+    else { try { localStorage.setItem(storeKey(), JSON.stringify(DB)); } catch (e) { try { toast('Storage full — sign in to back up your farm'); } catch (_) {} } }
     if (cloud.on && !cloud.applying) scheduleCloudSave();
   }
 
@@ -103,11 +103,11 @@
   window.addEventListener('online', anFlush);
 
   /* ---------------- seed ---------------- */
-  function today() { return new Date(); }
-  function addDays(n) { var d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); }
-  function iso(y, m, d) { return new Date(y, m - 1, d).toISOString().slice(0, 10); }
-  var YR = today().getFullYear();
-  var APP_VERSION = '1.8.2';
+  function ymd(d) { var z = new Date(d.getTime() - d.getTimezoneOffset() * 60000); return z.toISOString().slice(0, 10); } // local calendar date, not UTC
+  function addDays(n) { var d = new Date(); d.setDate(d.getDate() + n); return ymd(d); }
+  function iso(y, m, d) { return ymd(new Date(y, m - 1, d)); }
+  var YR = new Date().getFullYear();
+  var APP_VERSION = '1.9.0';
   var CONTACT_EMAIL = 'info@maintainflow.pro';
   var CONTACT_TOPICS = ['Bug report', 'Feature request', 'Billing & Pro', 'Account & login', 'Partnership / sales', 'Something else'];
 
@@ -208,10 +208,11 @@
   function curSym() { return curInfo().sym; }
   function greetOf() { return countryInfo().greet; }
   function symFor(code) { return (CUR[code] && CUR[code].sym) || code; }
+  var _nfLoc, _nf;   // cached number formatter — locale only changes on region change
   function money(n) {
-    var c = curInfo(), v = Math.round(+n || 0), s;
-    try { s = new Intl.NumberFormat(c.loc).format(v); } catch (e) { s = v.toLocaleString('en-US'); }
-    return c.sym + ' ' + s;
+    var c = curInfo(), v = Math.round(+n || 0);
+    if (_nfLoc !== c.loc) { _nfLoc = c.loc; try { _nf = new Intl.NumberFormat(c.loc); } catch (e) { _nf = null; } }
+    return c.sym + ' ' + (_nf ? _nf.format(v) : v.toLocaleString('en-US'));
   }
   function $(s, r) { return (r || document).querySelector(s); }
   function el(html) { var t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstElementChild; }
@@ -252,8 +253,7 @@
 
   /* ---------------- KPI ---------------- */
   function totalSpend() {
-    var e = DB.expenses.reduce(function (a, x) { return a + (+x.amount || 0); }, 0);
-    return e;
+    return DB.expenses.reduce(function (a, x) { return a + (+x.amount || 0); }, 0);
   }
   function totalHa() { return DB.fields.reduce(function (a, x) { return a + (+x.sizeHa || 0); }, 0); }
   function tasksDueCount() { return DB.tasks.filter(function (t) { var s = taskState(t); return s === 'over' || s === 'due'; }).length; }
@@ -262,7 +262,7 @@
     DB.expenses.forEach(function (x) { cats[x.category] = (cats[x.category] || 0) + (+x.amount || 0); });
     return cats;
   }
-  var CATCOLOR = { Fertilizer: '#3E8E5A', Seed: '#E8A93C', Fuel: '#15A0A2', Labour: '#C4543A', Chemicals: '#6f6fb0', Other: '#5e7080' };
+  var CATCOLOR = { Fertilizer: '#3E8E5A', Seed: '#E8A93C', Fuel: '#15A0A2', Labour: '#C4543A', Chemicals: '#6f6fb0', Maintenance: '#8a6d3b', Livestock: '#b5651d', Other: '#5e7080' };
 
   /* ---------------- state ---------------- */
   var DB = null; // initialized in boot (local mode) or after sign-in (cloud mode)
@@ -591,7 +591,7 @@
     var chips = el('<div class="chips"></div>');
     filters.forEach(function (fl) {
       var b = el('<button class="chip' + (state.taskFilter === fl ? ' on' : '') + '">' + fl + '</button>');
-      b.addEventListener('click', function () { state.taskFilter = fl; viewField(); });
+      b.addEventListener('click', function () { state.taskFilter = fl; viewField(); $('#view').scrollTop = 0; });
       chips.appendChild(b);
     });
     v.appendChild(chips);
@@ -670,14 +670,15 @@
 
     // breakdown
     var cats = expenseByCat();
-    var order = ['Fertilizer', 'Seed', 'Chemicals', 'Fuel', 'Labour', 'Other'];
+    var KNOWN = ['Fertilizer', 'Seed', 'Chemicals', 'Fuel', 'Labour', 'Maintenance', 'Livestock', 'Other'];
+    var order = KNOWN.concat(Object.keys(cats).filter(function (k) { return KNOWN.indexOf(k) < 0; })); // include every logged category
     var active = order.filter(function (k) { return cats[k] > 0; });
     var bd = el('<div class="breakdown"><h4>Where the money went</h4><div class="stacked"></div><div class="legend"></div></div>');
     var stacked = $('.stacked', bd), legend = $('.legend', bd);
     active.forEach(function (k) {
       var pct = spend ? (cats[k] / spend * 100) : 0;
-      stacked.appendChild(el('<i style="width:' + pct.toFixed(1) + '%;background:' + CATCOLOR[k] + '"></i>'));
-      legend.appendChild(el('<span class="lg"><span class="sw" style="background:' + CATCOLOR[k] + '"></span>' + k + ' <b>' + money(cats[k]) + '</b></span>'));
+      stacked.appendChild(el('<i style="width:' + pct.toFixed(1) + '%;background:' + (CATCOLOR[k] || CATCOLOR.Other) + '"></i>'));
+      legend.appendChild(el('<span class="lg"><span class="sw" style="background:' + (CATCOLOR[k] || CATCOLOR.Other) + '"></span>' + esc(k) + ' <b>' + money(cats[k]) + '</b></span>'));
     });
     if (!active.length) bd = emptyState('No expenses yet', 'Log seed, fertilizer, fuel and labour to see your cost breakdown.');
     v.appendChild(bd);
@@ -811,7 +812,7 @@
   function openEquipForm(existing) {
     var ed = existing && existing.id ? existing : null;
     var host = openModal(
-      '<div class="modal-head"><h3>' + (ed ? 'Edit equipment' : 'New equipment') + '</h3><button class="x" id="mx">&times;</button></div>' +
+      '<div class="modal-head"><h3>' + (ed ? 'Edit equipment' : 'New equipment') + '</h3><button type="button" class="x" id="mx" aria-label="Close">&times;</button></div>' +
       '<div class="field-group"><label>Type</label><div class="seg" id="kindSeg"></div></div>' +
       '<div class="field-group"><label>Name</label><input id="qName" value="' + esc(ed ? ed.name : '') + '" placeholder="e.g. Massey Ferguson 375"></div>' +
       '<div class="row2"><div class="field-group"><label>Make / spec (optional)</label><input id="qMake" value="' + esc(ed ? ed.make : '') + '" placeholder="e.g. 75 hp"></div>' +
@@ -849,7 +850,7 @@
 
   function openServiceForm(eq) {
     var host = openModal(
-      '<div class="modal-head"><h3>Log service · ' + esc(eq.name) + '</h3><button class="x" id="mx">&times;</button></div>' +
+      '<div class="modal-head"><h3>Log service · ' + esc(eq.name) + '</h3><button type="button" class="x" id="mx" aria-label="Close">&times;</button></div>' +
       '<div class="field-group"><label>Type</label><select id="sType">' + SERVICE_TYPES.map(function (t) { return '<option>' + t + '</option>'; }).join('') + '</select></div>' +
       '<div class="row2"><div class="field-group"><label>Date</label><input id="sDate" type="date" value="' + addDays(0) + '"></div>' +
       '<div class="field-group"><label>Cost (' + curSym() + ', optional)</label><input id="sCost" type="number" inputmode="decimal" placeholder="0"></div></div>' +
@@ -880,7 +881,7 @@
       return '<div class="hist-row"><div><b>' + esc(l.type) + '</b><span>' + fmtDate(l.dateISO) + (l.note ? ' · ' + esc(l.note) : '') + '</span></div>' + (l.cost > 0 ? '<span class="hist-cost">' + money(l.cost) + '</span>' : '') + '</div>';
     }).join('');
     openModal(
-      '<div class="modal-head"><h3>Service log · ' + esc(eq.name) + '</h3><button class="x" id="mx">&times;</button></div>' +
+      '<div class="modal-head"><h3>Service log · ' + esc(eq.name) + '</h3><button type="button" class="x" id="mx" aria-label="Close">&times;</button></div>' +
       '<div class="hist">' + (rows || '<p style="color:var(--muted);font-size:13px">No entries yet.</p>') + '</div>' +
       '<button class="btn-soft" id="hClose">Close</button>');
     var host = $('#modalHost');
@@ -945,7 +946,7 @@
       '<button data-m="crops"' + (DB.farmMode !== 'livestock' ? ' class="on"' : '') + '>🌱 Crops</button>' +
       '<button data-m="livestock"' + (DB.farmMode === 'livestock' ? ' class="on"' : '') + '>🐄 Livestock</button></div>');
     wrap.querySelectorAll('button').forEach(function (b) {
-      b.addEventListener('click', function () { if (DB.farmMode !== b.dataset.m) { DB.farmMode = b.dataset.m; save(); render(); } });
+      b.addEventListener('click', function () { if (DB.farmMode !== b.dataset.m) { DB.farmMode = b.dataset.m; save(); render(); $('#view').scrollTop = 0; } });
     });
     return wrap;
   }
@@ -1045,7 +1046,7 @@
     var ed = existing && existing.id ? existing : null;
     var nextTag = 'HRD-' + String((DB.herds.length || 0) + 1).padStart(2, '0');
     var host = openModal(
-      '<div class="modal-head"><h3>' + (ed ? 'Edit herd' : 'New herd') + '</h3><button class="x" id="mx">&times;</button></div>' +
+      '<div class="modal-head"><h3>' + (ed ? 'Edit herd' : 'New herd') + '</h3><button type="button" class="x" id="mx" aria-label="Close">&times;</button></div>' +
       '<div class="field-group"><label>Species</label><div class="seg" id="spSeg"></div></div>' +
       '<div class="row2"><div class="field-group"><label>Herd tag</label><input id="hTag" value="' + esc(ed ? ed.tag : nextTag) + '"></div>' +
       '<div class="field-group"><label>Head count</label><input id="hCount" type="number" inputmode="numeric" value="' + (ed ? ed.count : '') + '" placeholder="0"></div></div>' +
@@ -1085,7 +1086,7 @@
   function openHerdLog(h, presetType) {
     var defUnit = h.species === 'poultry' ? 'eggs' : 'litres';
     var host = openModal(
-      '<div class="modal-head"><h3>Log · ' + esc(h.tag) + '</h3><button class="x" id="mx">&times;</button></div>' +
+      '<div class="modal-head"><h3>Log · ' + esc(h.tag) + '</h3><button type="button" class="x" id="mx" aria-label="Close">&times;</button></div>' +
       '<div class="row2"><div class="field-group"><label>Type</label><select id="lType">' + HERD_EVENTS.map(function (t) { return '<option' + (t === presetType ? ' selected' : '') + '>' + t + '</option>'; }).join('') + '</select></div>' +
       '<div class="field-group"><label>Date</label><input id="lDate" type="date" value="' + addDays(0) + '"></div></div>' +
       '<div class="field-group" id="gQty"><label>Number of animals</label><input id="lQty" type="number" inputmode="numeric" placeholder="0"></div>' +
@@ -1144,6 +1145,9 @@
   function normalizeDB() {
     if (!DB) return;
     DB.settings = DB.settings || {};
+    if (!DB.fields) DB.fields = [];
+    if (!DB.tasks) DB.tasks = [];
+    if (!DB.expenses) DB.expenses = [];
     if (!DB.yields) DB.yields = [];
     if (!DB.equipment) DB.equipment = [];
     if (!DB.herds) DB.herds = [];
@@ -1200,7 +1204,7 @@
     var fld = fieldById(fieldId); if (!fld) return;
     var ed = existing && existing.id ? existing : null;
     var host = openModal(
-      '<div class="modal-head"><h3>' + (ed ? 'Edit harvest' : 'Add harvest') + '</h3><button class="x" id="mx">&times;</button></div>' +
+      '<div class="modal-head"><h3>' + (ed ? 'Edit harvest' : 'Add harvest') + '</h3><button type="button" class="x" id="mx" aria-label="Close">&times;</button></div>' +
       '<div class="acct-row"><span class="acct-ic" style="background:var(--green-soft)">' + cropOf(fld.crop).e + '</span><div class="acct-meta"><b>' + esc(fld.tag) + ' · ' + cropOf(fld.crop).label + '</b><span>' + fld.sizeHa + ' ha</span></div></div>' +
       '<div class="row2"><div class="field-group"><label>Harvest date</label><input id="yDate" type="date" value="' + (ed ? ed.harvestISO : addDays(0)) + '"></div>' +
       '<div class="field-group"><label>Area harvested (ha)</label><input id="yArea" type="number" inputmode="decimal" step="0.1" value="' + (ed ? ed.areaHa : fld.sizeHa) + '"></div></div>' +
@@ -1232,7 +1236,7 @@
 
   function openUpgradeSheet() {
     var pro = isPro(), b = window.MFAG_BILLING || {};
-    var head = '<div class="modal-head"><h3>MaintainFlow Pro</h3><button class="x" id="mx">&times;</button></div>' +
+    var head = '<div class="modal-head"><h3>MaintainFlow Pro</h3><button type="button" class="x" id="mx" aria-label="Close">&times;</button></div>' +
       '<p class="modal-note">Tools for growing and financing your farm:</p>' +
       '<ul class="pro-list"><li>Printable PDF records for lenders &amp; buyers</li><li>Yield &amp; herd analytics + lender summary</li><li>List your business in the Agri-services directory</li><li>Priority support</li></ul>';
     var body;
@@ -1264,7 +1268,7 @@
       var c = COUNTRIES[k];
       return '<option value="' + k + '"' + (k === cur ? ' selected' : '') + '>' + c.flag + ' ' + c.name + ' · ' + symFor(c.cur) + '</option>';
     }).join('');
-    var host = openModal('<div class="modal-head"><h3>Region &amp; currency</h3><button class="x" id="mx">&times;</button></div>' +
+    var host = openModal('<div class="modal-head"><h3>Region &amp; currency</h3><button type="button" class="x" id="mx" aria-label="Close">&times;</button></div>' +
       '<p class="modal-note">Sets your greeting and the currency shown across the app.</p>' +
       '<div class="field-group"><label>Country</label><select id="rgSel">' + opts + '</select></div>' +
       '<button class="btn-primary" id="rgSave">Save</button>');
@@ -1282,7 +1286,7 @@
       '<p>Sign-in uses Firebase (Google) for authentication and storage; weather uses Open-Meteo based on a location you provide.</p>';
   }
   function openPrivacy() {
-    var host = openModal('<div class="modal-head"><h3>Privacy</h3><button class="x" id="mx">&times;</button></div><div class="legal">' + privacyHtml() + '</div><button class="btn-soft" id="pClose">Close</button>');
+    var host = openModal('<div class="modal-head"><h3>Privacy</h3><button type="button" class="x" id="mx" aria-label="Close">&times;</button></div><div class="legal">' + privacyHtml() + '</div><button class="btn-soft" id="pClose">Close</button>');
     $('#mx', host).onclick = closeModal; $('#pClose', host).onclick = closeModal;
   }
   function copyText(t) {
@@ -1301,7 +1305,7 @@
   function openContactSheet(presetTopic) {
     var prefill = (cloud.on && cloud.email) ? cloud.email : '';
     var host = openModal(
-      '<div class="modal-head"><h3>Contact us</h3><button class="x" id="mx">&times;</button></div>' +
+      '<div class="modal-head"><h3>Contact us</h3><button type="button" class="x" id="mx" aria-label="Close">&times;</button></div>' +
       '<p class="sheet-note">Pick a topic and write your message — we usually reply within 1–2 working days.</p>' +
       '<div class="field-group"><label>What’s this about?</label><select id="cTopic">' + CONTACT_TOPICS.map(function (t) { return '<option' + (t === presetTopic ? ' selected' : '') + '>' + t + '</option>'; }).join('') + '</select></div>' +
       '<div class="field-group"><label>Your email</label><input id="cEmail" type="email" inputmode="email" value="' + esc(prefill) + '" placeholder="you@example.com"></div>' +
@@ -1378,7 +1382,7 @@
   }
   function openExportSheet() {
     var host = openModal(
-      '<div class="modal-head"><h3>Export records</h3><button class="x" id="mx">&times;</button></div>' +
+      '<div class="modal-head"><h3>Export records</h3><button type="button" class="x" id="mx" aria-label="Close">&times;</button></div>' +
       '<p class="modal-note">Share your farm history with a lender, buyer or co-op.</p>' +
       '<button class="btn-soft" id="exCsv">Download CSV (all records)</button>' +
       '<button class="btn-primary" id="exPdf">Printable PDF report' + (isPro() ? '' : ' · Pro') + '</button>');
@@ -1387,13 +1391,7 @@
     $('#exPdf', host).onclick = function () { closeModal(); requirePro(printReport); };
   }
 
-  /* ---- INPUT SUPPLIER MARKETPLACE (hosted JSON + offline fallback) ---- */
-  var SUPPLIERS_FALLBACK = [
-    { e: '🌽', name: 'AgriSeed Botswana', cat: 'Seed', loc: 'Gaborone', items: 'Maize, soybean, sorghum & sunflower seed', tel: '+2673190000', whatsapp: '2673190000' },
-    { e: '🧪', name: 'GrowChem Supplies', cat: 'Fertilizer & chemicals', loc: 'Francistown', items: 'Compound D, LAN, urea, herbicides & fungicides', tel: '+2672410000', whatsapp: '2672410000' },
-    { e: '🚜', name: 'FarmMech Hire', cat: 'Mechanisation', loc: 'Lobatse', items: 'Tractor, planter & sprayer hire; land prep', tel: '+2675330000', whatsapp: '2675330000' },
-    { e: '💧', name: 'Kalahari Irrigation', cat: 'Irrigation', loc: 'Gaborone', items: 'Drip kits, pumps, piping & boreholes', tel: '+2673950000', whatsapp: '2673950000' }
-  ];
+  /* ---- AGRI-SERVICES DIRECTORY (hosted JSON + offline fallback) ---- */
   var SUP_KEY = 'mfag.services';
   var SERVICES_CATS = ['Markets & buyers', 'Funding & support', 'Animal health & vets', 'Extension & advice', 'Inputs & services'];
   var SERVICES_CAT_IC = { 'Markets & buyers': '🛒', 'Funding & support': '💰', 'Animal health & vets': '🩺', 'Extension & advice': '📚', 'Inputs & services': '🌱' };
@@ -1404,10 +1402,12 @@
     { e: '🌽', name: 'Agro-dealers', cat: 'Inputs & services', country: 'ALL', loc: 'Towns nationwide', desc: 'Seed, fertilizer, herbicides & fungicides.', how: 'Buy from licensed agro-dealers.' }
   ];
   var suppliersData = null;
+  var suppliersFetched = false;
   function loadSuppliers(cb) {
     if (!suppliersData) { try { var c = JSON.parse(localStorage.getItem(SUP_KEY) || 'null'); if (c && c.length) suppliersData = c; } catch (e) {} }
-    if (window.fetch) {
-      fetch('agriservices.json', { cache: 'no-cache' }).then(function (r) { return r.json(); }).then(function (j) {
+    if (window.fetch && !suppliersFetched) {
+      suppliersFetched = true;   // fetch the static directory once per session; re-renders reuse cached data
+      fetch('agriservices.json').then(function (r) { return r.json(); }).then(function (j) {
         var list = (j && j.services) || (j && j.suppliers) || (Array.isArray(j) ? j : null);
         if (!list || !list.length) return;
         var s = JSON.stringify(list);
@@ -1422,7 +1422,8 @@
   function contactSupplier(s) {
     var num = (s.whatsapp || '').replace(/\D/g, '');
     if (num) { window.open('https://wa.me/' + num + '?text=' + encodeURIComponent('Hello ' + s.name + ', I’m a MaintainFlow Ag farmer and would like more information.'), '_blank', 'noopener'); return; }
-    if (s.tel) { window.location.href = 'tel:' + s.tel; return; }
+    var tel = (s.tel || '').replace(/[^0-9+]/g, '');
+    if (tel) { window.location.href = 'tel:' + tel; return; }
     toast('No direct contact on file');
   }
   /* ---- community listings: Pro members publish themselves as buyers/sellers/suppliers ---- */
@@ -1465,7 +1466,7 @@
         publicLoad.busy = false; publicLoad.cc = cc;
         if (!j || !j.fields || !j.fields.json) return;
         var arr; try { arr = JSON.parse(j.fields.json.stringValue || '[]'); } catch (e) { return; }
-        arr = arr.filter(function (s) { return s.country === cc; }).map(function (s) { s._id = s.uid; s.member = true; return s; });
+        arr = arr.filter(function (s) { return s.country === cc && s.active !== false && s.hidden !== true; }).map(function (s) { s._id = s.uid; s.member = true; return s; });
         if (JSON.stringify(arr) === JSON.stringify(communityListings)) return;   // unchanged → no re-render
         communityListings = arr; cacheListings(cc, arr);
         if (state.view === 'suppliers') render();
@@ -1480,7 +1481,7 @@
   }
   function openReportSheet(s) {
     var reasons = ['Spam', 'Scam or fraud', 'Offensive', 'Wrong or fake info', 'Other'];
-    var host = openModal('<div class="modal-head"><h3>Report listing</h3><button class="x" id="mx">&times;</button></div>' +
+    var host = openModal('<div class="modal-head"><h3>Report listing</h3><button type="button" class="x" id="mx" aria-label="Close">&times;</button></div>' +
       '<p class="modal-note">Why are you reporting “' + esc(s.name) + '”?</p>' +
       reasons.map(function (r) { return '<button class="btn-soft rp" data-r="' + esc(r) + '">' + r + '</button>'; }).join(''));
     $('#mx', host).onclick = closeModal;
@@ -1544,7 +1545,7 @@
   function openListingForm(ed) {
     var cc = (ed && ed.country) || (DB.settings && DB.settings.country) || 'BW';
     var host = openModal(
-      '<div class="modal-head"><h3>' + (ed ? 'Edit your listing' : 'List your business') + '</h3><button class="x" id="mx">&times;</button></div>' +
+      '<div class="modal-head"><h3>' + (ed ? 'Edit your listing' : 'List your business') + '</h3><button type="button" class="x" id="mx" aria-label="Close">&times;</button></div>' +
       '<div class="field-group"><label>I am a…</label><select id="loRole">' + ROLES.map(function (r) { return '<option' + (ed && ed.role === r.v ? ' selected' : '') + '>' + r.v + '</option>'; }).join('') + '</select></div>' +
       '<div class="field-group"><label>Business / your name</label><input id="loName" maxlength="80" value="' + esc(ed ? ed.name : '') + '" placeholder="e.g. Pula Grain Traders"></div>' +
       '<div class="field-group"><label>What you buy / sell / offer</label><input id="loDesc" maxlength="240" value="' + esc(ed ? ed.desc : '') + '" placeholder="e.g. Buys maize &amp; sorghum at market rates"></div>' +
@@ -1617,7 +1618,7 @@
         var howLine = (!hasContact && s.how) ? '<div class="show">ℹ️ ' + esc(s.how) + '</div>' : '';
         var reportLine = (s.member && !own) ? '<button class="s-report">⚑ Report</button>' : '';
         var btn = own ? '<button class="s-contact s-edit">Edit</button>' : (hasContact ? '<button class="s-contact">Contact</button>' : '');
-        var row = el('<div class="supplier' + (s.member ? ' is-member' : '') + '"><span class="sic">' + ic + '</span>' +
+        var row = el('<div class="supplier' + (s.member ? ' is-member' : '') + '"><span class="sic">' + esc(ic) + '</span>' +
           '<div class="sm"><div class="snm">' + esc(s.name) + badge + '</div><div class="scat">' + esc(s.loc || '') + '</div><div class="sit">' + esc(s.desc || s.items || '') + '</div>' + howLine + reportLine + '</div>' + btn + '</div>');
         if (own) $('.s-contact', row).addEventListener('click', function () { openListingForm(s); });
         else if (hasContact) $('.s-contact', row).addEventListener('click', function () { contactSupplier(s); });
@@ -1796,7 +1797,7 @@
   }
   function hideFab() { $('#fab').hidden = true; }
   function toast(msg) {
-    var t = $('#toast'); t.textContent = msg; t.hidden = false;
+    var t = $('#toast'); t.hidden = false; t.textContent = msg;   // unhide first so the aria-live region announces the change
     clearTimeout(toast._t); toast._t = setTimeout(function () { t.hidden = true; }, 2200);
   }
 
@@ -1813,7 +1814,7 @@
     var ed = existing && existing.id ? existing : null;
     var nextTag = 'FLD-' + String(DB.fields.length + 1).padStart(2, '0');
     var host = openModal(
-      '<div class="modal-head"><h3>' + (ed ? 'Edit field' : 'New field') + '</h3><button class="x" id="mx">&times;</button></div>' +
+      '<div class="modal-head"><h3>' + (ed ? 'Edit field' : 'New field') + '</h3><button type="button" class="x" id="mx" aria-label="Close">&times;</button></div>' +
       '<div class="field-group"><label>Crop</label><div class="seg" id="cropSeg"></div></div>' +
       '<div class="row2"><div class="field-group"><label>Field tag</label><input id="fTag" value="' + esc(ed ? ed.tag : nextTag) + '"></div>' +
       '<div class="field-group"><label>Size (hectares)</label><input id="fSize" type="number" inputmode="decimal" step="0.1" value="' + (ed ? ed.sizeHa : '') + '" placeholder="2.4"></div></div>' +
@@ -1849,7 +1850,7 @@
   function openTaskForm(fid, existing) {
     var ed = existing && existing.id ? existing : null;
     var host = openModal(
-      '<div class="modal-head"><h3>' + (ed ? 'Edit task' : 'New work order') + '</h3><button class="x" id="mx">&times;</button></div>' +
+      '<div class="modal-head"><h3>' + (ed ? 'Edit task' : 'New work order') + '</h3><button type="button" class="x" id="mx" aria-label="Close">&times;</button></div>' +
       '<div class="field-group"><label>Type</label><select id="tType">' + TASK_TYPES.map(function (t) { return '<option' + (ed && ed.type === t ? ' selected' : '') + '>' + t + '</option>'; }).join('') + '</select></div>' +
       '<div class="field-group"><label>Task name</label><input id="tName" value="' + esc(ed ? ed.name : '') + '" placeholder="e.g. Top-dress LAN"></div>' +
       '<div class="field-group"><label>Detail (optional)</label><input id="tDet" value="' + esc(ed ? ed.detail : '') + '" placeholder="e.g. 50 kg"></div>' +
@@ -1875,6 +1876,7 @@
   }
   var TYPE2CAT = { Fertilizer: 'Fertilizer', Spray: 'Chemicals', Planting: 'Seed', Weeding: 'Labour', Harvest: 'Labour', Irrigation: 'Fuel', Scouting: 'Other', Other: 'Other' };
   function completeTask(t) {
+    if (t.completed) return;   // guard against a double-tap pushing a second expense
     t.completed = true; t.completedISO = addDays(0);
     if (t.cost > 0) {
       DB.expenses.push({ id: f(), fieldId: t.fieldId, category: TYPE2CAT[t.type] || 'Other', amount: t.cost, dateISO: t.completedISO, note: t.name });
@@ -1885,7 +1887,7 @@
   var EXP_CATS = ['Seed', 'Fertilizer', 'Chemicals', 'Fuel', 'Labour', 'Maintenance', 'Livestock', 'Other'];
   function openExpenseForm() {
     var host = openModal(
-      '<div class="modal-head"><h3>Log expense</h3><button class="x" id="mx">&times;</button></div>' +
+      '<div class="modal-head"><h3>Log expense</h3><button type="button" class="x" id="mx" aria-label="Close">&times;</button></div>' +
       '<div class="field-group"><label>Category</label><select id="eCat">' + EXP_CATS.map(function (c) { return '<option>' + c + '</option>'; }).join('') + '</select></div>' +
       '<div class="row2"><div class="field-group"><label>Amount (P)</label><input id="eAmt" type="number" inputmode="decimal" placeholder="0"></div>' +
       '<div class="field-group"><label>Date</label><input id="eDate" type="date" value="' + addDays(0) + '"></div></div>' +
@@ -1970,8 +1972,9 @@
       '<span class="sch-ic">' + it.icon + '</span>' +
       '<div class="sch-meta"><div class="t">' + esc(it.title) + '</div><div class="s">' + esc(it.sub) + '</div></div>' +
       '<span class="pill ' + pill[0] + '">' + pill[1] + '</span>' +
-      (it.task ? '<button class="sch-done" title="Mark done">' + CHECK_SVG + '</button>' : '') + '</div>');
+      (it.task ? '<button class="sch-done" type="button" title="Mark done" aria-label="Mark done">' + CHECK_SVG + '</button>' : '') + '</div>');
     row.addEventListener('click', it.tap);
+    row.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); it.tap(); } });
     if (it.task) {
       $('.sch-done', row).addEventListener('click', function (e) {
         e.stopPropagation(); track('task_complete', { from: 'schedule' }); completeTask(it.task);
@@ -1986,7 +1989,7 @@
     var chips = el('<div class="chips"></div>');
     FILTERS.forEach(function (fl) {
       var b = el('<button class="chip' + (state.schedFilter === fl ? ' on' : '') + '">' + fl + '</button>');
-      b.addEventListener('click', function () { state.schedFilter = fl; viewAllTasks(); });
+      b.addEventListener('click', function () { state.schedFilter = fl; viewAllTasks(); $('#view').scrollTop = 0; });
       chips.appendChild(b);
     });
     v.appendChild(chips);
@@ -2169,6 +2172,7 @@
 
   // Apply a DB coming FROM the cloud without echoing it back up.
   function applyRemoteDB(remote) {
+    try { if (JSON.stringify(remote) === JSON.stringify(DB)) { cloud.lastSync = Date.now(); updateSyncPill(); return; } } catch (e) {} // ignore identical snapshots
     cloud.applying = true;
     DB = remote;
     save();            // writes the local cache only (cloud.applying guards the push)
@@ -2310,7 +2314,7 @@
     save();
     track('backup_prompt_shown', { n: DB.settings.backupPrompts });
     var host = openModal(
-      '<div class="modal-head"><h3>Back up your farm?</h3><button class="x" id="mx">&times;</button></div>' +
+      '<div class="modal-head"><h3>Back up your farm?</h3><button type="button" class="x" id="mx" aria-label="Close">&times;</button></div>' +
       '<div class="backup-warn"><span class="bw-ic">⚠️</span><div>Right now your records are saved <b>only on this phone</b>. If you lose or change your phone, clear your browser, or uninstall the app, your fields, herds and costs will be <b>gone for good</b>.</div></div>' +
       '<p class="backup-msg">Sign in (it’s free) to back everything up safely and sync across your devices. It takes about a minute.</p>' +
       '<button class="btn-primary" id="bkGo">Back up my farm — free</button>' +
@@ -2455,7 +2459,7 @@
       ? '<div class="field-group"><label>Password</label><button class="btn-soft" id="acctPw">Send password reset email</button></div>'
       : '';
     var host = openModal(
-      '<div class="modal-head"><h3>Account</h3><button class="x" id="mx">&times;</button></div>' +
+      '<div class="modal-head"><h3>Account</h3><button type="button" class="x" id="mx" aria-label="Close">&times;</button></div>' +
       '<div class="acct-row"><span class="acct-ic">' + LEAF + '</span><div class="acct-meta"><b>' + esc(cloud.email || cloud.phone || 'Signed in') + '</b><span>' + synced + '</span></div></div>' +
       '<div class="field-group"><label>Farm name</label><input id="acctFarm" type="text" value="' + esc((DB.settings && DB.settings.farmName) || '') + '" placeholder="Your farm name"></div>' +
       '<button class="btn-primary" id="acctSave">Save changes</button>' +
@@ -2488,7 +2492,7 @@
   }
   function confirmDeleteAccount() {
     var host = openModal(
-      '<div class="modal-head"><h3>Delete account?</h3><button class="x" id="mx">&times;</button></div>' +
+      '<div class="modal-head"><h3>Delete account?</h3><button type="button" class="x" id="mx" aria-label="Close">&times;</button></div>' +
       '<p class="modal-note">This permanently deletes your account and all farm data in the cloud. This cannot be undone.</p>' +
       '<button class="btn-danger" id="delYes">Delete everything</button>' +
       '<button class="btn-soft" id="delNo">Cancel</button>');

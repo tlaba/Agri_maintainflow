@@ -1,5 +1,7 @@
 /* MaintainFlow Ag — service worker (offline-first) */
-var VERSION = 'mfag-v1.8.2';
+var VERSION = 'mfag-v1.9.0';
+var RUNTIME = 'mfag-runtime'; // cross-origin/runtime cache that survives version bumps (e.g. fonts)
+function cacheable(res) { return res && res.status === 200 && res.type !== 'opaqueredirect'; } // never cache error/redirect responses
 var CORE = [
   './',
   './index.html',
@@ -25,7 +27,7 @@ self.addEventListener('install', function (e) {
 self.addEventListener('activate', function (e) {
   e.waitUntil(
     caches.keys().then(function (keys) {
-      return Promise.all(keys.filter(function (k) { return k !== VERSION; }).map(function (k) { return caches.delete(k); }));
+      return Promise.all(keys.filter(function (k) { return k !== VERSION && k !== RUNTIME; }).map(function (k) { return caches.delete(k); }));
     }).then(function () { return self.clients.claim(); })
   );
 });
@@ -48,8 +50,7 @@ self.addEventListener('fetch', function (e) {
     if (isShell) {
       e.respondWith(
         fetch(req).then(function (res) {
-          var copy = res.clone();
-          caches.open(VERSION).then(function (c) { c.put(req, copy); }).catch(function () {});
+          if (cacheable(res)) { var copy = res.clone(); caches.open(VERSION).then(function (c) { c.put(req, copy); }).catch(function () {}); }
           return res;
         }).catch(function () {
           return caches.match(req).then(function (cached) {
@@ -64,8 +65,7 @@ self.addEventListener('fetch', function (e) {
       caches.match(req).then(function (cached) {
         if (cached) return cached;
         return fetch(req).then(function (res) {
-          var copy = res.clone();
-          caches.open(VERSION).then(function (c) { c.put(req, copy); }).catch(function () {});
+          if (cacheable(res)) { var copy = res.clone(); caches.open(VERSION).then(function (c) { c.put(req, copy); }).catch(function () {}); }
           return res;
         });
       })
@@ -73,12 +73,11 @@ self.addEventListener('fetch', function (e) {
     return;
   }
 
-  // Cross-origin (e.g. Google Fonts): stale-while-revalidate.
+  // Cross-origin (e.g. Google Fonts): stale-while-revalidate into the persistent runtime cache.
   e.respondWith(
     caches.match(req).then(function (cached) {
       var net = fetch(req).then(function (res) {
-        var copy = res.clone();
-        caches.open(VERSION).then(function (c) { c.put(req, copy); }).catch(function () {});
+        if (cacheable(res) || res.type === 'opaque') { var copy = res.clone(); caches.open(RUNTIME).then(function (c) { c.put(req, copy); }).catch(function () {}); }
         return res;
       }).catch(function () { return cached; });
       return cached || net;

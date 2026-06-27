@@ -1,17 +1,23 @@
 # MaintainFlow Ag — Weekly Posting Schedule
 
-_Built from existing assets. All times in **SAST (UTC+2)** — anchor everything to
-this; one evening post hits peak across most of the continent (see strategy)._
+_You post from **US Eastern Time**. Times below are **YOUR ET clock** (when to
+post/schedule), with the **African audience time (SAST/UTC+2)** that actually
+drives reach. Currently ET = **EDT, 6h behind SAST**; in US winter (EST, ~Nov–Mar)
+it's **7h behind**, so shift each ET time **1 hour earlier** then._
+
+> ⏰ **Schedule, don't stay up.** Use **Meta Business Suite → Planner** to queue
+> Facebook + Instagram posts in advance at the African-evening target. WhatsApp
+> Status can't be scheduled — post it manually (it lasts 24h, so timing is loose).
 
 ## The weekly rhythm (4 feed posts + daily WhatsApp Status)
 
-| Day | Time (SAST) | Channel | Post type | Why this slot |
-|-----|-------------|---------|-----------|----------------|
-| **Mon** | 19:00 | FB + IG | 🎓 **Tip / educational** (engagement question) | Ease into the week with value, not a pitch |
-| **Wed** | 18:30 | FB + IG | 🌱 **Feature post** (product) | Mid-week evening peak |
-| **Fri** | 18:30 | FB + IG | 🎬 **Reel / video** | Friday evening = high scroll time |
-| **Sun** | 11:00 | FB + IG | 💰 **Finance / farmer story** | Sunday late-morning relaxed browsing |
-| **Daily** | 07:00 + 19:00 | 📱 **WhatsApp Status** | reuse the day's image / a quick tip | Highest-trust, lowest-data channel |
+| Day | **Post at (ET)** | = Audience (SAST) | Channel | Post type | How |
+|-----|------------------|-------------------|---------|-----------|-----|
+| **Mon** | **1:00 PM ET** | 7:00 PM | FB + IG | 🎓 **Tip / educational** (question) | post live (your lunch) |
+| **Wed** | **12:30 PM ET** | 6:30 PM | FB + IG | 🌱 **Feature post** | post live |
+| **Fri** | **12:30 PM ET** | 6:30 PM | FB + IG | 🎬 **Reel / video** | post live |
+| **Sun** | **5:00 AM ET** | 11:00 AM | FB + IG | 💰 **Finance / farmer story** | ⏰ **schedule Sat night** |
+| **Daily** | **~1:00 PM ET** | 7:00 PM | 📱 **WhatsApp Status** | reuse the day's image | post manually at your lunch |
 
 **Rules that matter more than the exact minute:**
 - Post **~1 hour before** your audience peak (check Meta Business Suite → Insights → "When your fans are online").
@@ -40,10 +46,18 @@ this; one evening post hits peak across most of the continent (see strategy)._
 - 👨🏾‍🌾 **Farmer stories / testimonials** — capture 2–3 short clips at the next field day; they outperform everything.
 - Localized captions (Setswana / Afrikaans / Swahili) for country-specific groups.
 
-## Country / time-zone notes
-- Anchor **18:00–19:00 SAST**: Southern Africa = peak evening, East Africa (UTC+3) = ~19:00–20:00, West Africa (UTC+1/0) = late afternoon.
+## Time-zone cheat-sheet (your ET → audience)
+| Your ET (EDT, now) | Africa (SAST) | Good for |
+|--------------------|---------------|----------|
+| 1:00 AM ET | 7:00 AM | African morning (before fields) |
+| **12:30–1:00 PM ET** | **6:30–7:00 PM** | **African evening = PEAK** ⭐ |
+| 3:00 PM ET | 9:00 PM | African late evening (tail) |
+
+- Your **lunchtime (12:30–1 PM ET) = African evening peak** — the easiest, best slot.
+- In US **winter (EST)** the gap becomes 7h → post **1 hour earlier** (e.g. Wed at 11:30 AM ET).
+- Anchor to SAST: East Africa (UTC+3) runs ~1h later, West Africa (UTC+1/0) ~1–2h earlier — the evening post still catches them all.
 - Push the **Setswana** livestock post into **Botswana-specific** groups; English elsewhere.
-- Avoid early-Monday and weekday late-night.
+- Avoid early-Monday and weekday late-night (African time).
 
 ## Light weekly checklist
 - [ ] Mon tip scheduled (with question)
